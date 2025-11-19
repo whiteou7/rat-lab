@@ -60,12 +60,11 @@ int main() {
             buf[n] = '\0';
             printf("%s", buf);
               // Stop when EOF marker detected
-            if (strstr(buf, C2_EOF_MARK)) break;
+            if (strstr(buf, C2_EOF_MARK)) continue;
         }
-
-        CLOSE_SOCK(client_fd);  
-        CLOSE_SOCK(server_fd);
-        SHUT_DOWN();
-        return 0; 
     }
+    CLOSE_SOCK(client_fd);  
+    CLOSE_SOCK(server_fd);
+    SHUT_DOWN();
+    return 0; 
 }
