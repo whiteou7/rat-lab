@@ -51,8 +51,7 @@ int main() {
 
         send(client_fd, buf, strlen(buf), 0);
         send(client_fd, "\n", 1, 0);
-
-        printf("[*] Output:\n");
+        
         while (1) {
             // Receive up to buffer-1 bytes.
             int n = recv(client_fd, buf, sizeof(buf)-1, 0); 

@@ -64,7 +64,7 @@ int main() {
             i++;
         }
         if (!strlen(cmd)) continue;
-        printf("%s\n", cmd);
+        printf("C2> %s\n", cmd);
 
         int cmdlen = strlen(cmd);
 
