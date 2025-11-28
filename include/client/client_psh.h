@@ -3,6 +3,6 @@
 
 #include "c2.h"
 
-void psh_receive(char *cmd, sock_t sock, char *buf);
+void psh_receive(sock_t sock, char *buf);
 
 #endif /* CLIENT_PSH_H */

