@@ -1,8 +1,7 @@
 #ifndef SCREENSHOT_H
 #define SCREENSHOT_H
+#include <windows.h>
 
-#ifdef _WIN32
-    #include <windows.h>
-#endif
+BYTE* SaveScreenshot(size_t* outSize);
 
 #endif

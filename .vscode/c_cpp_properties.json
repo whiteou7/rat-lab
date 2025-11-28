@@ -1,0 +1,30 @@
+{
+  "configurations": [
+    {
+      "name": "Linux",
+      "includePath": [
+        "${workspaceFolder}/**",
+        "/usr/include"
+      ],
+      "compilerPath": "/usr/bin/gcc",
+      "intelliSenseMode": "linux-gcc-x64",
+      "defines": [
+        "__linux__"
+      ]
+    },
+    {
+      "name": "Windows (Cross-Compile)",
+      "includePath": [
+        "${workspaceFolder}/**",
+        "/usr/i686-w64-mingw322/include",
+        "/usr/include"
+      ],
+      "compilerPath": "/usr/bin/i686-w64-mingw322-gcc",
+      "intelliSenseMode": "windows-gcc-x64",
+      "defines": [
+        "_WIN32"
+      ]
+    }
+  ],
+  "version": 4
+}

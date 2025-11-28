@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include "c2.h"
 #include "server/server_psh.h"
+#include <string.h>
 
 void psh_send(char* buf, sock_t client_fd) {
     while (1) {

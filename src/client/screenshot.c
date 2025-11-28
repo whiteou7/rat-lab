@@ -1,7 +1,10 @@
 #define _CRT_SECURE_NO_WARNINGS
-#include <windows.h>
+#include <string.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <stdlib.h>
+#include "client/screenshot.h"
+#include <windows.h>
 
 BYTE* SaveScreenshot(size_t* outSize)
 {
@@ -40,14 +43,14 @@ BYTE* SaveScreenshot(size_t* outSize)
     bi.biBitCount = 32;
     bi.biCompression = BI_RGB;
 
+    // malloc for binary data
+    DWORD pixelDataSize = width * height * 4;
+    BYTE* pixels = (BYTE*)malloc(pixelDataSize);
+
     BITMAPFILEHEADER bfh = {0};
     bfh.bfType = 0x4D42;
     bfh.bfOffBits = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER);
     bfh.bfSize = bfh.bfOffBits + pixelDataSize;
-
-    // malloc for binary data
-    DWORD pixelDataSize = width * height * 4;
-    BYTE* pixels = (BYTE*)malloc(pixelDataSize);
 
     // Convert pixels into binary data
     if (!GetDIBits(hMemoryDC, hBitmap, 0, height, pixels, (BITMAPINFO*)&bi, DIB_RGB_COLORS)) {

