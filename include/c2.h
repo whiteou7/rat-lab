@@ -15,6 +15,7 @@
     #define CLOSE_SOCK(s) closesocket(s)
     #define SHUT_DOWN()   WSACleanup()
     #define SOCK_INIT()   WSADATA w; WSAStartup(MAKEWORD(2,2), &w)
+    #include <windows.h>
 #else
     #include <unistd.h>
     #include <arpa/inet.h>
@@ -23,6 +24,7 @@
     #define CLOSE_SOCK(s) close(s)
     #define SHUT_DOWN()
     #define SOCK_INIT()
+    typedef unsigned char BYTE;
 #endif
 
 #endif

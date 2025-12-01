@@ -1,11 +1,6 @@
 #ifndef SCREENSHOT_H
 #define SCREENSHOT_H
-
-#ifdef _WIN32
-    #include <windows.h>
-#else
-    typedef unsigned char BYTE;
-#endif
+#include "c2.h"
 
 BYTE* SaveScreenshot(size_t* outSize);
 
