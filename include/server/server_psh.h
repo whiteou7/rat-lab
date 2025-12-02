@@ -3,6 +3,6 @@
 
 #include "c2.h"
 
-void psh_send(char* buf, sock_t client_fd);
+void psh_send(sock_t client_fd);
 
 #endif /* SERVER_PSH_H */
