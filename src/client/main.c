@@ -60,70 +60,9 @@ int main() {
             safe_send_payload(sock, buffer, size, 0);
             free(buffer);
         } else if (cmd == '3') {
-            char *remote_path = (char*)safe_recv_payload(sock, NULL, 0);
-            if (!remote_path) {
-                continue;
-            }
-
-            size_t file_size = 0;
-            char *file_buffer = read_file(remote_path, &file_size);
-            if (!file_buffer) {
-                free(remote_path);
-                continue;
-            }
-
-            if (file_size > INT_MAX) {
-                free(file_buffer);
-                free(remote_path);
-                continue;
-            }
-
-            char status = '1';
-            if (safe_send(sock, &status, 1, 0) <= 0) {
-                free(file_buffer);
-                free(remote_path);
-                break;
-            }
-            safe_send_payload(sock, file_buffer, (int)file_size, 0);
-            free(file_buffer);
-            free(remote_path);
+            upload_file_to_server(sock);
         } else if (cmd == '4') {
-            char *remote_path = (char*)safe_recv_payload(sock, NULL, 0);
-            if (!remote_path) {
-                continue;
-            }
-
-            int incoming_size = 0;
-            BYTE *file_buffer = (BYTE*)safe_recv_payload(sock, &incoming_size, 0);
-            if (!file_buffer) {
-                free(remote_path);
-                continue;
-            }
-
-            if (remote_path[0] == '\0') {
-                free(remote_path);
-                free(file_buffer);
-                continue;
-            }
-
-            FILE *fp = fopen(remote_path, "wb");
-            if (!fp) {
-                free(remote_path);
-                free(file_buffer);
-                continue;
-            }
-
-            size_t expected = (size_t)incoming_size;
-            size_t written = expected ? fwrite(file_buffer, 1, expected, fp) : 0;
-            fclose(fp);
-
-            if (written == expected) {
-                char status = '1';
-                safe_send(sock, &status, 1, 0);
-            }
-
-            free(remote_path);
-            free(file_buffer);
+            download_file_from_server(sock);
         } 
     }
 
