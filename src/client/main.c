@@ -6,7 +6,7 @@
 #include <errno.h>
 #include <limits.h>
 #include "c2.h"
-#include "client/client_psh.h"
+#include "client/utils.h"
 #include "client/screenshot.h"
 #include "common.h"
 #include "client/info.h"
