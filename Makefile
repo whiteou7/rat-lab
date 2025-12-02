@@ -19,7 +19,7 @@ COMMON_CFLAGS  ?= -Iinclude -Wall -Wextra -Wpedantic
 CLIENT_CFLAGS  ?= $(COMMON_CFLAGS)
 SERVER_CFLAGS  ?= $(COMMON_CFLAGS)
 
-CLIENT_LDFLAGS ?= -lws2_32 -lgdi32
+CLIENT_LDFLAGS ?= -lwininet -liphlpapi -ladvapi32 -lws2_32 -lgdi32
 SERVER_LDFLAGS ?=
 
 .PHONY: all clean dirs

@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
+#include <errno.h>
 
 // Send exactly len bytes (handles partial sends)
 int safe_send(int sock, const void *buf, int len, int flags) {
@@ -47,6 +49,9 @@ int safe_send_payload(int sock, const void *payload, int payload_len, int flags)
     // Send length (network byte order)
     uint32_t net_len = htonl((uint32_t)payload_len);
     if (safe_send(sock, &net_len, sizeof(net_len), flags) <= 0) return -1;
+    if (payload_len == 0) {
+        return 0;
+    }
     if (safe_send(sock, payload, payload_len, flags) <= 0) return -1;
     
     return payload_len;
@@ -68,17 +73,24 @@ void *safe_recv_payload(int sock, int *out_len, int flags) {
         return NULL;
     }
     
-    // Allocate buffer
-    void *payload = malloc(payload_len);
+    // Allocate buffer (ensure non-null even for zero-length payloads)
+    void *payload = NULL;
+    if (payload_len > 0) {
+        payload = malloc(payload_len);
+    } else {
+        payload = malloc(1);
+    }
     if (!payload) {
         printf("[ERR] failed to allocate %u bytes for payload\n", payload_len);
         return NULL;
     }
     
     // Receive payload
-    if (safe_recv(sock, payload, payload_len, flags) <= 0) {
-        free(payload);
-        return NULL;
+    if (payload_len > 0) {
+        if (safe_recv(sock, payload, payload_len, flags) <= 0) {
+            free(payload);
+            return NULL;
+        }
     }
     
     if (out_len) {
@@ -86,4 +98,63 @@ void *safe_recv_payload(int sock, int *out_len, int flags) {
     }
     
     return payload;
+}
+
+// Read entire file into memory. Caller must free the returned buffer.
+char* read_file(const char* path, size_t* size) {
+    if (!path) {
+        return NULL;
+    }
+
+    FILE *fp = fopen(path, "rb");
+    if (!fp) {
+        printf("[ERR] failed to open file %s: %s\n", path, strerror(errno));
+        return NULL;
+    }
+
+    if (fseek(fp, 0, SEEK_END) != 0) {
+        printf("[ERR] fseek failed for %s\n", path);
+        fclose(fp);
+        return NULL;
+    }
+
+    long length = ftell(fp);
+    if (length < 0) {
+        printf("[ERR] ftell failed for %s\n", path);
+        fclose(fp);
+        return NULL;
+    }
+    rewind(fp);
+
+    size_t file_size = (size_t)length;
+    char *buffer = NULL;
+    if (file_size > 0) {
+        buffer = (char*)malloc(file_size);
+    } else {
+        buffer = (char*)malloc(1);
+    }
+
+    if (!buffer) {
+        printf("[ERR] failed to allocate %zu bytes for %s\n", file_size, path);
+        fclose(fp);
+        return NULL;
+    }
+
+    if (file_size > 0) {
+        size_t read = fread(buffer, 1, file_size, fp);
+        if (read != file_size) {
+            printf("[ERR] fread failed for %s\n", path);
+            free(buffer);
+            fclose(fp);
+            return NULL;
+        }
+    }
+
+    fclose(fp);
+
+    if (size) {
+        *size = file_size;
+    }
+
+    return buffer;
 }

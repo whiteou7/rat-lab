@@ -1,7 +1,7 @@
 #ifndef C2_H
 #define C2_H
 
-#define C2_PORT         4444
+#define C2_PORT         3000
 #define C2_BUF_SIZE     16384
 #define C2_EOF_MARK     "<<<EOF>>>"
 #define C2_EOF_MARK_LEN 9

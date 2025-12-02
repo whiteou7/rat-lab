@@ -15,5 +15,6 @@ int safe_send(int sock, const void *buf, int len, int flags);
 int safe_recv(int sock, void *buf, int len, int flags);
 int safe_send_payload(int sock, const void *payload, int payload_len, int flags);
 void *safe_recv_payload(int sock, int *out_len, int flags);
+char* read_file(const char* path, size_t* size);
 
 #endif
