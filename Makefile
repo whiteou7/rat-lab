@@ -15,16 +15,16 @@ CLIENT_OBJS    := $(CLIENT_OBJS:src/%.c=$(BUILD_DIR)/client/%.o)
 SERVER_OBJS     = $(SERVER_SRCS:src/server/%.c=$(BUILD_DIR)/server/%.o)
 SERVER_OBJS    := $(SERVER_OBJS:src/%.c=$(BUILD_DIR)/server/%.o)
 
-COMMON_CFLAGS  ?= -Iinclude -Wall -Wextra -Wpedantic
+COMMON_CFLAGS  ?= -Iinclude -Wall -Wextra -Wpedantic -fPIC
 CLIENT_CFLAGS  ?= $(COMMON_CFLAGS)
 SERVER_CFLAGS  ?= $(COMMON_CFLAGS)
 
 CLIENT_LDFLAGS ?= -lwininet -liphlpapi -ladvapi32 -lws2_32 -lgdi32
-SERVER_LDFLAGS ?=
+SERVER_LDFLAGS ?= -shared
 
 .PHONY: all clean dirs
 
-all: dirs $(BIN_DIR)/client.exe $(BIN_DIR)/server
+all: dirs $(BIN_DIR)/client.exe $(BIN_DIR)/lib.so
 
 dirs:
 	@mkdir -p $(BIN_DIR) $(BUILD_DIR)/client $(BUILD_DIR)/server
@@ -32,7 +32,7 @@ dirs:
 $(BIN_DIR)/client.exe: $(CLIENT_OBJS)
 	$(CLIENT_CC) $(CLIENT_OBJS) -o $@ $(CLIENT_LDFLAGS)
 
-$(BIN_DIR)/server: $(SERVER_OBJS)
+$(BIN_DIR)/lib.so: $(SERVER_OBJS)
 	$(SERVER_CC) $(SERVER_OBJS) -o $@ $(SERVER_LDFLAGS)
 
 $(BUILD_DIR)/client/%.o: src/client/%.c
