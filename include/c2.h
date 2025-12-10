@@ -3,8 +3,13 @@
 
 #define C2_PORT         3000
 #define C2_BUF_SIZE     16384
-#define C2_EOF_MARK     "<<<EOF>>>"
-#define C2_EOF_MARK_LEN 9
+
+// Bunch of constants for cmd code
+#define SYS_INFO_CMD 0
+#define PSH_CMD 1
+#define SCREEN_CMD 2
+#define DL_FILE_CMD 3
+#define UL_FILE_CMD 4
 
 // Cross-platform socket abstraction helpers
 #ifdef _WIN32

@@ -7,7 +7,7 @@
 #include <errno.h>
 
 // Send exactly len bytes (handles partial sends)
-int safe_send(int sock, const void *buf, int len, int flags) {
+int send_all(int sock, const void *buf, int len, int flags) {
     int total_sent = 0;
     const char *ptr = (const char *)buf;
     
@@ -26,7 +26,7 @@ int safe_send(int sock, const void *buf, int len, int flags) {
 }
 
 // Receive exactly len bytes (handles partial receives)
-int safe_recv(int sock, void *buf, int len, int flags) {
+int recv_all(int sock, void *buf, int len, int flags) {
     int total_recv = 0;
     char *ptr = (char *)buf;
     
@@ -44,61 +44,63 @@ int safe_recv(int sock, void *buf, int len, int flags) {
     return total_recv;
 }
 
-// Send 4-byte length prefix followed by payload
-int safe_send_payload(int sock, const void *payload, int payload_len, int flags) {
+// Send payload with length and cmd as header
+int safe_send(int sock, const void *payload, int cmd, int payload_len, int flags) {
     // Send length (network byte order)
     uint32_t net_len = htonl((uint32_t)payload_len);
-    if (safe_send(sock, &net_len, sizeof(net_len), flags) <= 0) return -1;
+    uint32_t net_cmd = htonl((uint32_t)cmd);
+    if (send_all(sock, &net_cmd, sizeof(net_cmd), flags) <= 0) return -1;
+    if (send_all(sock, &net_len, sizeof(net_len), flags) <= 0) return -1;
     if (payload_len == 0) {
         return 0;
     }
-    if (safe_send(sock, payload, payload_len, flags) <= 0) return -1;
+    if (send_all(sock, payload, payload_len, flags) <= 0) return -1;
     
     return payload_len;
 }
 
-// Receive length-prefixed payload (caller must free the returned buffer)
-// Returns pointer to malloc'd buffer, or NULL on error
-// The received length is stored in *out_len if out_len is not NULL
-void *safe_recv_payload(int sock, int *out_len, int flags) {
-    // Receive length (network byte order)
-    uint32_t net_len;
-    if (safe_recv(sock, &net_len, sizeof(net_len), flags) <= 0) return NULL;
-    
-    uint32_t payload_len = ntohl(net_len);
-    
-    // Sanity check to prevent excessive allocation
-    if (payload_len > 100 * 1024 * 1024) { // 100MB limit
-        printf("[ERR] payload too large: %u bytes\n", payload_len);
+// Returns allocated buffer with payload (caller must free), or NULL on error / zero-length payload.
+// If out_cmd or out_len are non-NULL they will be set.
+void *safe_recv(int sock, int *out_cmd, int *out_len, int flags) {
+    uint32_t net_cmd = 0;
+    uint32_t net_len = 0;
+    int r;
+
+    // Receive command (network order)
+    r = recv_all(sock, &net_cmd, sizeof(net_cmd), flags);
+    if (r <= 0) return NULL;
+    int cmd = (int)ntohl(net_cmd);
+
+    // Receive length
+    r = recv_all(sock, &net_len, sizeof(net_len), flags);
+    if (r <= 0) return NULL;
+    int len = (int)ntohl(net_len);
+
+    // If caller wants these values, set them
+    if (out_cmd) *out_cmd = cmd;
+    if (out_len) *out_len = len;
+
+    // If length is zero, nothing to return
+    if (len == 0) return NULL;
+
+    // Allocate buffer
+    void *buf = malloc((size_t)len);
+    if (!buf) {
+        printf("[ERR] malloc failed\n");
         return NULL;
     }
-    
-    // Allocate buffer (ensure non-null even for zero-length payloads)
-    void *payload = NULL;
-    if (payload_len > 0) {
-        payload = malloc(payload_len);
-    } else {
-        payload = malloc(1);
-    }
-    if (!payload) {
-        printf("[ERR] failed to allocate %u bytes for payload\n", payload_len);
-        return NULL;
-    }
-    
+
     // Receive payload
-    if (payload_len > 0) {
-        if (safe_recv(sock, payload, payload_len, flags) <= 0) {
-            free(payload);
-            return NULL;
-        }
+    r = recv_all(sock, buf, len, flags);
+    if (r <= 0) {
+        free(buf);
+        return NULL;
     }
-    
-    if (out_len) {
-        *out_len = payload_len;
-    }
-    
-    return payload;
+
+    return buf;
 }
+
+
 
 // Read entire file into memory. Caller must free the returned buffer.
 char* read_file(const char* path, size_t* size) {
