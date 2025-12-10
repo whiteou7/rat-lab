@@ -7,10 +7,10 @@
 #include "client/utils.h"
 #include "common.h"
 
-static const char b64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+const char b64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 // Encode binary data to Base64 text
-static void b64_encode(const unsigned char *in, int len, char *out) {
+void b64_encode(const unsigned char *in, int len, char *out) {
     int i = 0, j = 0;
     unsigned char c3[3];
     while (len--) {
@@ -31,6 +31,48 @@ static void b64_encode(const unsigned char *in, int len, char *out) {
     }
     out[j] = '\0';
 }
+
+// Reverse lookup table for Base64
+int b64_rev[256];
+
+void b64_init_rev() {
+    for (int i = 0; i < 256; i++) b64_rev[i] = -1;
+    for (int i = 0; i < 64; i++) b64_rev[(unsigned char)b64[i]] = i;
+}
+
+// Decode Base64 text to binary data
+int b64_decode(const char *in, unsigned char *out) {
+    b64_init_rev();
+    
+    int out_len = 0;
+    int val = 0;
+    int bits = -8;
+    
+    while (*in) {
+        if (*in == '=') {
+            break;  // Stop at padding
+        }
+        
+        int c = b64_rev[(unsigned char)*in];
+        if (c == -1) {
+            in++;
+            continue;  // Skip invalid chars
+        }
+        
+        val = (val << 6) | c;
+        bits += 6;
+        
+        if (bits >= 0) {
+            out[out_len++] = (val >> bits) & 0xFF;
+            bits -= 8;
+        }
+        
+        in++;
+    }
+    
+    return out_len;
+}
+
 
 int psh_exec(sock_t sock, const char *cmd) {
     if (!cmd || !*cmd) return -1;
