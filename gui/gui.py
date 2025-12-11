@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, scrolledtext, filedialog, messagebox, simpledialog
 import threading
 import io
+import csv
 from pathlib import Path
 from PIL import Image, ImageTk
 import sv_ttk
@@ -21,7 +22,7 @@ class C2ServerGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("C2 Server Control Panel")
-        self.root.geometry("900x700")
+        self.root.geometry("900x1000")
         
         self.c2 = None
         self.connected = False
@@ -309,52 +310,78 @@ class C2ServerGUI:
             messagebox.showerror("Error", f"Failed to retrieve browser downloads:\n{e}")
 
     def _show_text_window(self, title, content):
-        """Display text content in a new window"""
+        """Display CSV content in a table viewer window"""
         text_window = tk.Toplevel(self.root)
         text_window.title(title)
         text_window.geometry("900x600")
-        
+
         main_frame = ttk.Frame(text_window, padding=10)
         main_frame.pack(fill=tk.BOTH, expand=True)
-        
+
         # Header
         header_frame = ttk.Frame(main_frame)
         header_frame.pack(fill=tk.X, pady=(0, 10))
-        
+
         ttk.Label(
-            header_frame, 
-            text=title, 
+            header_frame,
+            text=title,
             font=("Arial", 12, "bold")
         ).pack(side=tk.LEFT)
-        
-        # Text display
-        text_widget = scrolledtext.ScrolledText(
-            main_frame,
-            wrap=tk.WORD,
-            font=("Consolas", 9),
-            state=tk.NORMAL
-        )
-        text_widget.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
-        
-        text_widget.insert(tk.END, content)
-        text_widget.config(state=tk.DISABLED)
-        
-        # Buttons
+
+        # --- CSV TABLE ---
+        table_frame = ttk.Frame(main_frame)
+        table_frame.pack(fill=tk.BOTH, expand=True)
+
+        tree = ttk.Treeview(table_frame, show="headings")
+        tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        scrollbar_y = ttk.Scrollbar(table_frame, orient="vertical", command=tree.yview)
+        scrollbar_y.pack(side=tk.RIGHT, fill=tk.Y)
+
+        scrollbar_x = ttk.Scrollbar(main_frame, orient="horizontal", command=tree.xview)
+        scrollbar_x.pack(fill=tk.X, pady=(5, 10))
+
+        tree.configure(yscrollcommand=scrollbar_y.set, xscrollcommand=scrollbar_x.set)
+
+        # Parse CSV
+        reader = csv.reader(io.StringIO(content))
+        rows = list(reader)
+        if not rows:
+            messagebox.showerror("CSV Error", "CSV content is empty.")
+            return
+
+        headers = rows[0]
+        tree["columns"] = headers
+
+        # Setup columns
+        for h in headers:
+            tree.heading(h, text=h)
+            tree.column(h, width=120, anchor="center")
+
+        # Add rows with alternating color tags
+        for idx, row in enumerate(rows[1:]):
+            tag = "even" if idx % 2 == 0 else "odd"
+            tree.insert("", tk.END, values=row, tags=(tag,))
+
+        tree.tag_configure("even", background="#1d1d1d")
+        tree.tag_configure("odd", background="#272727")
+
+        # --- BUTTONS ---
         btn_frame = ttk.Frame(main_frame)
         btn_frame.pack(fill=tk.X)
-        
+
         def copy_to_clipboard():
             text_window.clipboard_clear()
             text_window.clipboard_append(content)
-            messagebox.showinfo("Copied", "Content copied to clipboard")
-        
+            messagebox.showinfo("Copied", "CSV copied to clipboard")
+
         ttk.Button(
             btn_frame,
             text="📋 Copy to Clipboard",
             command=copy_to_clipboard,
             width=20
         ).pack(side=tk.LEFT, padx=5)
-        
+
         ttk.Button(
             btn_frame,
             text="✖ Close",
@@ -386,6 +413,7 @@ class C2ServerGUI:
             try:
                 client_info = self.c2.get_client_info()
                 if client_info:
+                    self.log(client_info, "info")
                     first_line = client_info.split('\n')[0][:70]
                     self.client_info_label.config(text=first_line)
             except:

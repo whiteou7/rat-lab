@@ -166,11 +166,11 @@ void upload_file_to_client(sock_t client_fd, char* remote_path, char* local_path
         return;
     }
 
-    if (safe_send(client_fd, remote_path, DL_FILE_CMD, strlen(remote_path) + 1, 0) < 0) {
+    if (safe_send(client_fd, remote_path, UL_FILE_CMD, strlen(remote_path) + 1, 0) < 0) {
         free(file_buffer);
         return;
     }
-    if (safe_send(client_fd, file_buffer, DL_FILE_CMD, (int)file_size, 0) < 0) {
+    if (safe_send(client_fd, file_buffer, UL_FILE_CMD, (int)file_size, 0) < 0) {
         free(file_buffer);
         return;
     }
