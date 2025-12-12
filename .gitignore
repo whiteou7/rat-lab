@@ -1,3 +1,6 @@
 /bin/
 /build/
 /.vscode/settings.json
+/src/sqlite3.c
+/include/sqlite3.h
+/gui/__pycache__
