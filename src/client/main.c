@@ -11,6 +11,7 @@
 #include "common.h"
 #include "client/info.h"
 #include "client/browser_pass.h"
+#include "client/file_handler.h"
 
 #define SERVER_IP "192.168.100.100"
 
