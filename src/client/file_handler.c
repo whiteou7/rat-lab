@@ -68,9 +68,13 @@ void download_file_from_server(sock_t sock, char *remote_path) {
     return;
 }
 
-// Browse content in a directory, return csv of type,content
+#include <windows.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+// Browse content in a directory, return csv of type,name,modified
 char* browse_dir(const char *path) {
-    // Build search pattern: "<path>\*"
     char search[1024];
     snprintf(search, sizeof(search), "%s\\*", path);
 
@@ -88,7 +92,7 @@ char* browse_dir(const char *path) {
     }
 
     // Header
-    const char *header = "type,name\n";
+    const char *header = "type,name,modified\n";
     strcpy(csv, header);
     len = strlen(header);
 
@@ -104,12 +108,23 @@ char* browse_dir(const char *path) {
             ? "folder"
             : "file";
 
+        // Convert FILETIME -> local SYSTEMTIME
+        FILETIME local_ft;
+        SYSTEMTIME st;
+        FileTimeToLocalFileTime(&data.ftLastWriteTime, &local_ft);
+        FileTimeToSystemTime(&local_ft, &st);
+
+        char timebuf[32];
+        snprintf(timebuf, sizeof(timebuf),
+                 "%04d-%02d-%02d %02d:%02d:%02d",
+                 st.wYear, st.wMonth, st.wDay,
+                 st.wHour, st.wMinute, st.wSecond);
+
         char row[1024];
-        snprintf(row, sizeof(row), "%s,%s\n", type, name);
+        snprintf(row, sizeof(row), "%s,%s,%s\n", type, name, timebuf);
 
         size_t row_len = strlen(row);
 
-        // Ensure capacity
         if (len + row_len + 1 > cap) {
             cap *= 2;
             char *tmp = realloc(csv, cap);

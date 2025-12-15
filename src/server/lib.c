@@ -212,3 +212,10 @@ char* browser_downloads_handle(sock_t client_fd) {
     char* res = (char*)safe_recv(client_fd, NULL, NULL, 0);
     return res;
 }
+
+char* browse_dir_handle(sock_t client_fd, char* dir) {
+    if (safe_send(client_fd, dir, BROWSE_FILE_CMD, strlen(dir) + 1, 0) <= 0) return;
+
+    char* res = (char*)safe_recv(client_fd, NULL, NULL, 0);
+    return res;
+}

