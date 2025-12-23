@@ -63,7 +63,9 @@ void cleanup(sock_t client_fd) {
 }
 
 char* client_info(sock_t client_fd) {
-    char* client_info = safe_recv(client_fd, NULL, NULL, 0);
+    int dummy = 0;
+    if (safe_send(client_fd, &dummy, SYS_INFO_CMD, sizeof(int), 0) <= 0) return NULL;
+    char* client_info = (char*)safe_recv(client_fd, NULL, NULL, 0);
     return client_info;
 }
 

