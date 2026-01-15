@@ -83,6 +83,9 @@ connect:
             free(dl);
         } else if (cmd == BROWSE_FILE_CMD) {
             char* files = browse_dir(payload);
+            if (!files) {
+                files = _strdup("type,name,modified\n");
+            }
             safe_send(sock, files, BROWSE_FILE_CMD, strlen(files) + 1, 0);
             free(files);
         }
